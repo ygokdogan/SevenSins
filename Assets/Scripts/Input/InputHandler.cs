@@ -19,6 +19,8 @@ namespace Input
         public bool IsJumpHeld { get; private set; }
         private float jumpInputStartTime = -2f;
         
+        public bool SheatheInput { get; private set; }
+        
 
         private void Awake()
         {
@@ -45,6 +47,9 @@ namespace Input
                 IsJumpHeld = false;
                 JumpInputReleased = true;
             };
+            
+            actions.Player.Sheathe.performed += ctx => SheatheInput = true;
+            actions.Player.Sheathe.canceled += ctx => SheatheInput = false;
         }
 
         private void Update()
@@ -61,6 +66,7 @@ namespace Input
         }
 
         public void UseJumpInput() => JumpInput = false;
+        public void UseSheatheInput() => SheatheInput = false;
         public void ConsumeJumpRelease() => JumpInputReleased = false;
         
         private void OnEnable() => actions.Enable();

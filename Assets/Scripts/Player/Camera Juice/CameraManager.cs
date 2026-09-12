@@ -28,11 +28,13 @@ namespace Player
         [SerializeField, Min(0f)] private float bobSpeed = 14f;
         private Vector3 cameraBobDefaultPos;
 
-        [Header("Landing Impact")]
-        [SerializeField, Min(0f)] private float minimumImpactSpeed = 2.5f;
+        [Header("Landing Impact Shock")]
+        [SerializeField, Min(0f)] private float minimumImpactSpeed = 4f;
         [SerializeField, Min(0.01f)] private float maximumImpactSpeed = 9f;
-        [SerializeField, Min(0f)] private float maximumLandingDip = 0.1f;
-        [SerializeField, Min(0f)] private float landingRecoverySpeed = 1f;
+        [SerializeField, Min(0f)] private float landingImpactStrength = 1.5f;
+        [SerializeField, Min(1f)] private float landingStiffness = 160f;
+        [SerializeField, Min(1f)] private float landingDamping = 18f;
+        [SerializeField] private float landingPitchMultiplier = 15f;
         
         [Header("Tilt")]
         [SerializeField] private Transform cameraTiltPivot;
@@ -47,7 +49,10 @@ namespace Player
         private float currentTilt;
         private float bobPhase;
         private float bobWeight;
+        
         private float landingOffset;
+        private float landingVelocity;
+        
         private Vector3 currentBobOffset;
 
         private void Awake()
@@ -91,6 +96,9 @@ namespace Player
 
         private void CameraBob()
         {
+            float dt = Time.deltaTime;
+            if (dt <= 0f) return;
+
             Vector3 planarVelocity = playerMovement.Velocity;
             planarVelocity.y = 0f;
             float currentSpeed = planarVelocity.magnitude;
@@ -102,20 +110,22 @@ namespace Player
             float targetFrequency = playerMovement.IsSprinting ? sprintBobFrequency : defaultBobFrequency;
             float targetAmplitude = playerMovement.IsSprinting ? sprintBobAmplitude : defaultBobAmplitude;
             
-            bobWeight = Mathf.MoveTowards(bobWeight, targetWeight, bobSpeed * Time.deltaTime);
-            bobPhase += targetFrequency * bobWeight * Time.deltaTime;
+            bobWeight = Mathf.MoveTowards(bobWeight, targetWeight, bobSpeed * dt);
+            bobPhase += targetFrequency * bobWeight * dt;
 
             Vector3 targetOffset = new Vector3(
                 Mathf.Cos(bobPhase * 0.5f) * bobLateralAmplitude * bobWeight,
                 Mathf.Sin(bobPhase) * targetAmplitude * bobWeight,
                 0f);
-            float smoothFactor = 1f - Mathf.Exp(-bobSpeed * Time.deltaTime);
+            float smoothFactor = 1f - Mathf.Exp(-bobSpeed * dt);
             currentBobOffset = Vector3.Lerp(currentBobOffset, targetOffset, smoothFactor);
-            landingOffset = Mathf.MoveTowards(
-                landingOffset,
-                0f,
-                landingRecoverySpeed * Time.deltaTime);
+
+            UpdateLandingSpring(dt);
+
             cameraBobPivot.localPosition = cameraBobDefaultPos + currentBobOffset + Vector3.up * landingOffset;
+
+            float pitchTilt = -landingOffset * landingPitchMultiplier;
+            cameraBobPivot.localRotation = Quaternion.Euler(pitchTilt, 0f, 0f);
         }
 
         private void OnLanded(float landingSpeed)
@@ -124,7 +134,20 @@ namespace Player
                 minimumImpactSpeed,
                 maximumImpactSpeed,
                 landingSpeed);
-            landingOffset = -impactStrength * maximumLandingDip;
+
+            if (impactStrength > 0f)
+            {
+                landingVelocity -= impactStrength * landingImpactStrength;
+            }
+        }
+
+        private void UpdateLandingSpring(float dt)
+        {
+            float springForce = -landingStiffness * landingOffset - landingDamping * landingVelocity;
+            landingVelocity += springForce * dt;
+            landingOffset += landingVelocity * dt;
+
+            landingOffset = Mathf.Clamp(landingOffset, -0.1f, 0.03f);
         }
 
         private void CameraTilt()

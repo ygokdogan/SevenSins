@@ -13,6 +13,7 @@ namespace Player
         public bool IsSprinting => ctx.IsSprinting;
         public bool IsGrounded => stateMachine.CurrentState == ctx.States.Grounded;
         public Vector3 Velocity => ctx.Velocity;
+        public float VerticalVelocity => ctx != null ? ctx.VerticalVelocity : 0f;
         public float CurrentMaxSpeed => IsSprinting ? sprintSpeed : walkSpeed;
         public event Action<float> Landed;
         
