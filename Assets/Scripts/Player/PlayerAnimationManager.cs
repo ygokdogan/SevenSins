@@ -7,37 +7,51 @@ namespace Player
 {
     public class PlayerAnimationManager : MonoBehaviour
     {
-        private bool sheathed = true;
-        
         private Animator anim;
-        private InputHandler input;
+        public bool CanPlayAttackAnimation { get; private set; } = true;
+        public bool IsPlayingAnimation { get; private set; } = false;
+
+        public event Action OnComboWindowOpened;
+        public event Action OnComboWindowClosed;
+        public event Action OnAnimationFinished;
+        public event Action OnLungeTriggered;
 
         private void Awake()
         {
-            input = GetComponentInParent<InputHandler>();
             anim = GetComponent<Animator>();
-
-            sheathed = true;
         }
 
-        private void Update()
+        public void PlayAttackAnimation(string animName, float crossFade = 0.1f)
         {
-            if (input.SheatheInput)
-            {
-                input.UseSheatheInput();
-                if (sheathed)
-                {
-                    HandIKManager.SetWeight(1f);
-                    anim.Play("Unsheathe");
-                }
-                else
-                {
-                    HandIKManager.SetWeight(0f);
-                    anim.Play("Sheathe");
-                }
-                sheathed = !sheathed;
-                
-            }
+            if (!CanPlayAttackAnimation) return;
+            
+            IsPlayingAnimation = true;
+            HandIKManager.SetWeight(1f);
+            anim.CrossFadeInFixedTime(animName, crossFade);
+        }
+
+        public void PlaySheatheAnimation()
+        {
+            IsPlayingAnimation = true;
+            HandIKManager.SetWeight(0f);
+            anim.Play("Sheathe");
+        }
+
+        public void PlayUnsheatheAnimation()
+        {
+            IsPlayingAnimation = true;
+            HandIKManager.SetWeight(1f);
+            anim.Play("Unsheathe");
+        }
+        
+        public void ComboWindowOpened() => OnComboWindowOpened?.Invoke();
+        public void ComboWindowClosed() => OnComboWindowClosed?.Invoke();
+        public void LungeTriggered() => OnLungeTriggered?.Invoke();
+        
+        public void AnimationFinished()
+        {
+            IsPlayingAnimation = false;
+            OnAnimationFinished?.Invoke();
         }
     }
 }

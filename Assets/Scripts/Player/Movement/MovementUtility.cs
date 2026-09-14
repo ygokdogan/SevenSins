@@ -6,6 +6,8 @@ namespace Player.Movement
     {
         public static void UpdatePlanarVelocity(MovementContext ctx, float dt, float controlMultiplier)
         {
+            if (!ctx.CanMove) return;
+            
             Vector2 input = Vector2.ClampMagnitude(ctx.Input.MoveInput, 1f);
             float targetSpeed = ctx.IsSprinting ? ctx.SprintSpeed : ctx.WalkSpeed;
             Vector3 targetVelocity = (ctx.Transform.right * input.x + ctx.Transform.forward * input.y) * targetSpeed;

@@ -20,6 +20,10 @@ namespace Input
         private float jumpInputStartTime = -2f;
         
         public bool SheatheInput { get; private set; }
+        private float sheatheInputStartTime = -2f;
+        
+        public bool PrimaryAttackInput { get; private set; }
+        private float primaryAttackInputStartTime = -2f;
         
 
         private void Awake()
@@ -48,13 +52,24 @@ namespace Input
                 JumpInputReleased = true;
             };
             
-            actions.Player.Sheathe.performed += ctx => SheatheInput = true;
-            actions.Player.Sheathe.canceled += ctx => SheatheInput = false;
+            actions.Player.Sheathe.performed += ctx =>
+            {
+                SheatheInput = true;
+                sheatheInputStartTime = Time.time;
+            };
+
+            actions.Player.PrimaryAttack.performed += ctx =>
+            {
+                PrimaryAttackInput = true;
+                primaryAttackInputStartTime = Time.time;
+            };
         }
 
         private void Update()
         {
             JumpBuffer();
+            SheatheBuffer();
+            PrimaryAttackBuffer();
         }
 
         private void JumpBuffer()
@@ -65,8 +80,27 @@ namespace Input
             }
         }
 
+        private void SheatheBuffer()
+        {
+            if (SheatheInput && Time.time >= sheatheInputStartTime + inputHoldTime)
+            {
+                SheatheInput = false;
+            }
+        }
+
+        private void PrimaryAttackBuffer()
+        {
+            if (PrimaryAttackInput && Time.time >= primaryAttackInputStartTime + inputHoldTime)
+            {
+                PrimaryAttackInput = false;
+            }
+        }
+
+        public void UseSprintInput() => SprintInput = false;
         public void UseJumpInput() => JumpInput = false;
         public void UseSheatheInput() => SheatheInput = false;
+        public void UsePrimaryAttackInput() => PrimaryAttackInput = false;
+        
         public void ConsumeJumpRelease() => JumpInputReleased = false;
         
         private void OnEnable() => actions.Enable();

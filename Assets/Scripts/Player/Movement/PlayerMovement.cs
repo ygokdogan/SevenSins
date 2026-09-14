@@ -9,12 +9,28 @@ namespace Player
     {
         private StateMachine<MovementContext> stateMachine;
         private MovementContext ctx;
-        
+
+        public bool CanMove
+        {
+            get => ctx.CanMove;
+            set => ctx.CanMove = value;
+        }
+        public bool CanSprint
+        {
+            get => ctx.CanSprint;
+            set => ctx.CanSprint = value;
+        }
         public bool IsSprinting => ctx.IsSprinting;
         public bool IsGrounded => stateMachine.CurrentState == ctx.States.Grounded;
-        public Vector3 Velocity => ctx.Velocity;
-        public float VerticalVelocity => ctx != null ? ctx.VerticalVelocity : 0f;
+
+        public Vector3 Velocity
+        {
+            get => ctx.Velocity;
+            set => ctx.Velocity = value;
+        }
+        public float VerticalVelocity => ctx.VerticalVelocity;
         public float CurrentMaxSpeed => IsSprinting ? sprintSpeed : walkSpeed;
+        
         public event Action<float> Landed;
         
         [Header("Ground Movement")]

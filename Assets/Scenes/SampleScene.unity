@@ -2077,8 +2077,9 @@ GameObject:
   - component: {fileID: 1295002322}
   - component: {fileID: 1295002323}
   - component: {fileID: 1295002324}
-  - component: {fileID: 1295002325}
   - component: {fileID: 1295002326}
+  - component: {fileID: 1295002325}
+  - component: {fileID: 1295002327}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -2201,6 +2202,20 @@ MonoBehaviour:
   cameraTiltPivot: {fileID: 1277909926}
   maxTilt: 1
   tiltSpeed: 8
+--- !u!114 &1295002327
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1295002318}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cfd5a208094714a2483d743bb763dd51, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Player.PlayerCombat
+  defaultLightAttack: {fileID: 11400000, guid: a2c84fda4c4704f68bfc2de7cd1d7c95, type: 2}
+  sheathedAttack: {fileID: 11400000, guid: 8653daf53b85c4327afcf1b4ceed9e66, type: 2}
 --- !u!1 &1510487069
 GameObject:
   m_ObjectHideFlags: 0
@@ -2325,8 +2340,8 @@ MonoBehaviour:
   rotationSmoothness: 12
   moveSwayAmount: 0.05
   moveTiltAmount: 3.5
-  jumpPosSwayAmount: 0.06
-  jumpRotSwayAmount: 5
+  jumpPosSwayAmount: 0.1
+  jumpRotSwayAmount: 12
 --- !u!1001 &2036612011
 PrefabInstance:
   m_ObjectHideFlags: 0

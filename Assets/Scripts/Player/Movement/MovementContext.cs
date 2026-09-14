@@ -16,8 +16,10 @@ namespace Player.Movement
         public Vector3 Velocity;
         public float VerticalVelocity;
         public float CoyoteTimer;
-
-        public bool IsSprinting => Input.SprintInput && Velocity.sqrMagnitude > 0.01f;
+        
+        public bool CanMove = false;
+        public bool CanSprint = true;
+        public bool IsSprinting => CanSprint && Input.SprintInput && Velocity.sqrMagnitude > 0.01f;
 
         public MovementStates States;
 
