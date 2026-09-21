@@ -1,3 +1,5 @@
+using Core;
+
 namespace Player.Combat.States
 {
     public class CombatIdleState : IState<CombatContext>
@@ -15,6 +17,12 @@ namespace Player.Combat.States
             {
                 ctx.Input.UseSheatheInput();
                 ctx.RequestTransition(ctx.States.Sheathe);
+                return;
+            }
+
+            if (ctx.Input.BlockInput || ctx.Input.IsBlockHeld)
+            {
+                ctx.RequestTransition(ctx.States.Block);
                 return;
             }
 

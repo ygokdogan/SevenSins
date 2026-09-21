@@ -1,6 +1,9 @@
 using System;
+using Combat;
+using Core;
 using Input;
 using Player.Combat.States;
+using Player.Movement;
 using UnityEngine;
 
 namespace Player.Combat
@@ -12,6 +15,14 @@ namespace Player.Combat
         public CharacterController Controller;
         public InputHandler Input;
         public PlayerMovement Movement;
+        public BoxCollider HitCollider;
+        public LayerMask HittableLayers;
+        public CameraManager CameraManager;
+        public float HitRecoveryDuration;
+        public HitInfo CurrentHit;
+        public float ParryCooldown;
+        public float NextParryTime;
+        public Action<float> TriggerHitStop;
         
         public Action<IState<CombatContext>> RequestTransition;
         public CombatStates States;
@@ -21,9 +32,13 @@ namespace Player.Combat
         public AttackData SheathedAttack;
         
         public Action OnLungeTriggered;
+        
         public bool IsSheathed = true;
         public bool IsComboWindowOpen = false;
         public bool IsAnimationFinished = false;
+        public bool IsAttackWindowOpen = false;
+        public bool IsBlocking = false;
+        public bool IsParrying = false;
     }
 
     public class CombatStates
@@ -31,5 +46,7 @@ namespace Player.Combat
         public CombatIdleState Idle;
         public CombatAttackState Attack;
         public CombatSheatheState Sheathe;
+        public CombatBlockState Block;
+        public CombatHitState Hit;
     } 
 }

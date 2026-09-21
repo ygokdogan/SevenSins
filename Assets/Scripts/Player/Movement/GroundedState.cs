@@ -1,3 +1,4 @@
+using Core;
 using UnityEngine;
 
 namespace Player.Movement
@@ -11,6 +12,10 @@ namespace Player.Movement
                 ctx.NotifyLanded?.Invoke(landingSpeed);
 
             ctx.CoyoteTimer = ctx.CoyoteTime;
+            ctx.WallRunCooldownTimer = 0f;
+            ctx.HasConsumedWallRunSurface = false;
+            ctx.LastWallRunNormal = Vector3.zero;
+            ctx.WallNormal = Vector3.zero;
             if (ctx.VerticalVelocity < 0f) ctx.VerticalVelocity = -2f;
         }
 
@@ -18,7 +23,7 @@ namespace Player.Movement
         {
             MovementUtility.UpdatePlanarVelocity(ctx, dt, 1f);
 
-            if (ctx.Input.JumpInput)
+            if (ctx.CanMove && ctx.Input.JumpInput)
             {
                 MovementUtility.StartJump(ctx);
                 ctx.Input.UseJumpInput();

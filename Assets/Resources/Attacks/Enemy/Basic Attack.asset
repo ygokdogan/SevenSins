@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae4560f6b4bfd40f79c08b49b20170fc, type: 3}
+  m_Name: Basic Attack
+  m_EditorClassIdentifier: Assembly-CSharp::Player.Combat.AttackData
+  animationName: basic_attack
+  crossFadeDuration: 0.1
+  telegraphDuration: 0.25
+  telegraphAnimation: telegraph_attack
+  damage: 10
+  poiseDamage: 0
+  hitStopDuration: 0.05
+  knockbackForce: 24
+  impactMultiplier: 1
+  hasLunge: 0
+  forwardImpulse: 6
+  impulseDecay: 25
+  nextLightAttack: {fileID: 0}
+  nextHeavyAttack: {fileID: 0}
+  hitVfxPrefab: {fileID: 0}
+  swingSfx: {fileID: 0}

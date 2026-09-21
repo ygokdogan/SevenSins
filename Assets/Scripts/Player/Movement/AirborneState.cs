@@ -1,17 +1,20 @@
+using Core;
 using UnityEngine;
 
 namespace Player.Movement
 {
-    public class AirborneState : IState<MovementContext>
+    public class AirborneState : 
+        IState<MovementContext>
     {
         public void Enter(MovementContext ctx) { }
 
         public void Tick(MovementContext ctx, float dt)
         {
+            ctx.WallRunCooldownTimer = Mathf.Max(0f, ctx.WallRunCooldownTimer - dt);
             MovementUtility.UpdatePlanarVelocity(ctx, dt, ctx.AirControl);
             
             ctx.CoyoteTimer -= dt;
-            if (ctx.Input.JumpInput && ctx.CoyoteTimer > 0f)
+            if (ctx.CanMove && ctx.Input.JumpInput && ctx.CoyoteTimer > 0f)
             {
                 MovementUtility.StartJump(ctx);
                 ctx.Input.UseJumpInput();
@@ -21,6 +24,12 @@ namespace Player.Movement
             {
                 ctx.VerticalVelocity *= ctx.JumpCutMultiplier;
                 ctx.Input.ConsumeJumpRelease();
+            }
+
+            if (WallRunState.CanStart(ctx))
+            {
+                ctx.RequestTransition(ctx.States.WallRun);
+                return;
             }
 
             float gravityMultiplier = ctx.VerticalVelocity > 0f

@@ -17,6 +17,8 @@ MonoBehaviour:
   damage: 25
   poiseDamage: 10
   hitStopDuration: 0.05
+  knockbackForce: 6
+  impactMultiplier: 3
   hasLunge: 1
   forwardImpulse: 24
   impulseDecay: 75

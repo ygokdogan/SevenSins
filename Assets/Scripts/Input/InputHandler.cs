@@ -25,6 +25,10 @@ namespace Input
         public bool PrimaryAttackInput { get; private set; }
         private float primaryAttackInputStartTime = -2f;
         
+        public bool BlockInput { get; private set; }
+        public bool IsBlockHeld { get; private set; }
+        private float blockInputStartTime = -2f;
+
 
         private void Awake()
         {
@@ -63,6 +67,17 @@ namespace Input
                 PrimaryAttackInput = true;
                 primaryAttackInputStartTime = Time.time;
             };
+
+            actions.Player.Block.performed += ctx =>
+            {
+                BlockInput = true;
+                IsBlockHeld = true;
+                blockInputStartTime = Time.time;
+            };
+            actions.Player.Block.canceled += ctx =>
+            {
+                IsBlockHeld = false;
+            };
         }
 
         private void Update()
@@ -70,6 +85,7 @@ namespace Input
             JumpBuffer();
             SheatheBuffer();
             PrimaryAttackBuffer();
+            BlockBuffer();
         }
 
         private void JumpBuffer()
@@ -96,10 +112,19 @@ namespace Input
             }
         }
 
+        private void BlockBuffer()
+        {
+            if (BlockInput && Time.time >= blockInputStartTime + inputHoldTime)
+            {
+                BlockInput = false;
+            }
+        }
+
         public void UseSprintInput() => SprintInput = false;
         public void UseJumpInput() => JumpInput = false;
         public void UseSheatheInput() => SheatheInput = false;
         public void UsePrimaryAttackInput() => PrimaryAttackInput = false;
+        public void UseBlockInput() => BlockInput = false;
         
         public void ConsumeJumpRelease() => JumpInputReleased = false;
         

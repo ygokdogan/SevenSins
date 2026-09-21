@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 347993b676fd48b1b92449a1e2efefb7, type: 3}
+  m_Name: Archer
+  m_EditorClassIdentifier: Assembly-CSharp::Enemies.Combat.EnemyConfig
+  sightRange: 20
+  fieldOfView: 120
+  closeAwarenessRange: 4.5
+  sightLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  searchDuration: 2
+  patrolOffsets:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: -10}
+  - {x: -10, y: 0, z: -10}
+  patrolWaitDuration: 1
+  stalkRange: 10
+  sprintSpeed: 5
+  walkSpeed: 3
+  retreatDistance: 2
+  retreatDuration: 0.45
+  maxHealth: 100
+  parryStunDuration: 2
+  parryKnockbackForce: 10

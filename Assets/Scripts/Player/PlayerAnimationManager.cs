@@ -15,6 +15,8 @@ namespace Player
         public event Action OnComboWindowClosed;
         public event Action OnAnimationFinished;
         public event Action OnLungeTriggered;
+        public event Action OnAttackWindowOpened;
+        public event Action OnAttackWindowClosed;
 
         private void Awake()
         {
@@ -34,19 +36,41 @@ namespace Player
         {
             IsPlayingAnimation = true;
             HandIKManager.SetWeight(0f);
-            anim.Play("Sheathe");
+            anim.CrossFadeInFixedTime("Sheathe", 0.1f);
         }
 
         public void PlayUnsheatheAnimation()
         {
             IsPlayingAnimation = true;
             HandIKManager.SetWeight(1f);
-            anim.Play("Unsheathe");
+            anim.CrossFadeInFixedTime("Unsheathe", 0.1f);
+        }
+
+        public void PlayBlockAnimation(float crossFade = 0.1f)
+        {
+            IsPlayingAnimation = true;
+            HandIKManager.SetWeight(1f);
+            anim.CrossFadeInFixedTime("block", crossFade);
+        }
+
+        public void StopBlockAnimation(float crossFade = 0.15f)
+        {
+            IsPlayingAnimation = false;
+            anim.CrossFadeInFixedTime("Idle_Unsheathed", crossFade);
+        }
+
+        public void PlayHitReaction(bool sheathed)
+        {
+            IsPlayingAnimation = false;
+            HandIKManager.SetWeight(sheathed ? 0f : 1f);
+            anim.CrossFadeInFixedTime(sheathed ? "Idle_Sheathed" : "Idle_Unsheathed", 0.05f);
         }
         
         public void ComboWindowOpened() => OnComboWindowOpened?.Invoke();
         public void ComboWindowClosed() => OnComboWindowClosed?.Invoke();
         public void LungeTriggered() => OnLungeTriggered?.Invoke();
+        public void AttackWindowOpened() => OnAttackWindowOpened?.Invoke();
+        public void AttackWindowClosed() => OnAttackWindowClosed?.Invoke();
         
         public void AnimationFinished()
         {

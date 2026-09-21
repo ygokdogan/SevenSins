@@ -14,10 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Player.Combat.AttackData
   animationName: light_attack_01
   crossFadeDuration: 0.1
+  telegraphDuration: 0.25
+  telegraphAnimation: 
   damage: 25
   poiseDamage: 10
   hitStopDuration: 0.05
-  forwardImpulse: 8
+  knockbackForce: 2
+  impactMultiplier: 1
+  hasLunge: 0
+  forwardImpulse: 4
   impulseDecay: 25
   nextLightAttack: {fileID: 11400000, guid: 385fe2a197f944e88853f5c8ab62517f, type: 2}
   nextHeavyAttack: {fileID: 0}

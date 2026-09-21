@@ -9,7 +9,7 @@ namespace Player.Movement
             if (!ctx.CanMove) return;
             
             Vector2 input = Vector2.ClampMagnitude(ctx.Input.MoveInput, 1f);
-            float targetSpeed = ctx.IsSprinting ? ctx.SprintSpeed : ctx.WalkSpeed;
+            float targetSpeed = (ctx.IsSprinting ? ctx.SprintSpeed : ctx.WalkSpeed) * ctx.SpeedMultiplier;
             Vector3 targetVelocity = (ctx.Transform.right * input.x + ctx.Transform.forward * input.y) * targetSpeed;
             targetVelocity.y = 0f;
 
