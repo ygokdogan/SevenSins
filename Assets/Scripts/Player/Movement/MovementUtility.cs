@@ -4,33 +4,34 @@ namespace Player.Movement
 {
     public static class MovementUtility
     {
-        public static void UpdatePlanarVelocity(MovementContext ctx, float dt, float controlMultiplier)
+        public static void UpdatePlanarVelocity(PlayerMovement player, float dt, float controlMultiplier)
         {
-            if (!ctx.CanMove) return;
-            
-            Vector2 input = Vector2.ClampMagnitude(ctx.Input.MoveInput, 1f);
-            float targetSpeed = (ctx.IsSprinting ? ctx.SprintSpeed : ctx.WalkSpeed) * ctx.SpeedMultiplier;
-            Vector3 targetVelocity = (ctx.Transform.right * input.x + ctx.Transform.forward * input.y) * targetSpeed;
+            PlayerMovementRuntimeData data = player.Data;
+            PlayerMovementConfig.GroundSettings config = player.Config.Ground;
+            if (!data.CanMove) return;
+
+            Vector2 input = Vector2.ClampMagnitude(player.Input.MoveInput, 1f);
+            float targetSpeed = (player.IsSprinting ? config.SprintSpeed : config.WalkSpeed) * data.SpeedMultiplier;
+            Vector3 targetVelocity = (player.transform.right * input.x + player.transform.forward * input.y) * targetSpeed;
             targetVelocity.y = 0f;
 
-            Vector3 currentVelocity = new Vector3(ctx.Velocity.x, 0f, ctx.Velocity.z);
-            bool isChangingDirection = input.sqrMagnitude > 0.001f &&
+            Vector3 currentVelocity = Vector3.ProjectOnPlane(data.Velocity, Vector3.up);
+            bool changingDirection = input.sqrMagnitude > 0.001f &&
                                      currentVelocity.sqrMagnitude > 0.001f &&
                                      Vector3.Dot(currentVelocity.normalized, targetVelocity.normalized) < 0f;
+            float rate = changingDirection
+                ? config.TurnAcceleration
+                : input.sqrMagnitude > 0.001f ? config.Acceleration : config.Deceleration;
 
-            float rate = isChangingDirection
-                ? ctx.TurnAcceleration
-                : input.sqrMagnitude > 0.001f ? ctx.Acceleration : ctx.Deceleration;
-            rate *= controlMultiplier;
-            
-            Vector3 newVelocity = Vector3.MoveTowards(currentVelocity, targetVelocity, rate * dt);
-            ctx.Velocity = new Vector3(newVelocity.x, 0f, newVelocity.z);
+            data.Velocity = Vector3.MoveTowards(currentVelocity, targetVelocity, rate * controlMultiplier * dt);
         }
 
-        public static void StartJump(MovementContext ctx)
+        public static void StartJump(PlayerMovement player)
         {
-            ctx.VerticalVelocity = Mathf.Sqrt(ctx.JumpHeight * -2f * ctx.Gravity);
-            ctx.CoyoteTimer = 0f;
+            PlayerMovementRuntimeData data = player.Data;
+            PlayerMovementConfig.JumpSettings config = player.Config.Jump;
+            data.VerticalVelocity = Mathf.Sqrt(config.Height * 2f * config.Gravity);
+            data.CoyoteTimer = 0f;
         }
     }
 }

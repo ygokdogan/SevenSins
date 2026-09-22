@@ -28,8 +28,8 @@ namespace Player.Combat.States
                 ctx.IsSheathed = false;
             }
 
-            ctx.Movement.CanSprint = false;
-            ctx.Movement.SpeedMultiplier = BlockMoveSpeedMultiplier;
+            ctx.Player.CanSprint = false;
+            ctx.Player.SpeedMultiplier = BlockMoveSpeedMultiplier;
             ctx.AnimationManager.PlayBlockAnimation();
         }
 
@@ -62,8 +62,8 @@ namespace Player.Combat.States
         {
             ctx.IsBlocking = false;
             ctx.IsParrying = false;
-            ctx.Movement.CanSprint = true;
-            ctx.Movement.SpeedMultiplier = 1f;
+            ctx.Player.CanSprint = true;
+            ctx.Player.SpeedMultiplier = 1f;
             ctx.AnimationManager.StopBlockAnimation();
         }
     }

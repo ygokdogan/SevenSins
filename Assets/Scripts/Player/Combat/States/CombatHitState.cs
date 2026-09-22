@@ -20,9 +20,9 @@ namespace Player.Combat.States
             ctx.Input.UseJumpInput();
             ctx.Input.ConsumeJumpRelease();
 
-            ctx.Movement.CanMove = false;
-            ctx.Movement.CanSprint = false;
-            ctx.Movement.Velocity = UnityEngine.Vector3.zero;
+            ctx.Player.CanMove = false;
+            ctx.Player.CanSprint = false;
+            ctx.Player.StopPlanarMovement();
             ctx.AnimationManager.PlayHitReaction(ctx.IsSheathed);
         }
 
@@ -34,8 +34,8 @@ namespace Player.Combat.States
 
         public void Exit(CombatContext ctx)
         {
-            ctx.Movement.CanMove = true;
-            ctx.Movement.CanSprint = true;
+            ctx.Player.CanMove = true;
+            ctx.Player.CanSprint = true;
         }
     }
 }

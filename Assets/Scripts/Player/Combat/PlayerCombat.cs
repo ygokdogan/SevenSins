@@ -10,6 +10,7 @@ using UnityEngine;
 
 namespace Player.Combat
 {
+    [RequireComponent(typeof(PlayerManager))]
     public class PlayerCombat : MonoBehaviour, IDamageable
     {
         [Header("Starting Attacks")]
@@ -42,9 +43,11 @@ namespace Player.Combat
 
         private void Awake()
         {
-            input = GetComponent<InputHandler>();
-            animManager = GetComponentInChildren<PlayerAnimationManager>();
-            cameraManager = GetComponent<CameraManager>();
+            var player = GetComponent<PlayerManager>();
+            player.Initialize();
+            input = player.Input;
+            animManager = player.Animation;
+            cameraManager = player.Camera;
             guardImpactVisual = GetComponentInChildren<GuardImpactVisual>();
             hitFeedback = GetComponentInChildren<PlayerHitFeedback>();
 
@@ -61,7 +64,7 @@ namespace Player.Combat
             {
                 Transform = transform,
                 AnimationManager = animManager,
-                Controller = GetComponent<CharacterController>(),
+                Controller = player.Controller,
                 Input = input,
                 HitCollider = hitCollider,
                 HittableLayers = hittableLayers,
@@ -69,7 +72,7 @@ namespace Player.Combat
                 HitRecoveryDuration = hitRecoveryDuration,
                 ParryCooldown = parryCooldown,
                 TriggerHitStop = TriggerHitStop,
-                Movement = GetComponent<PlayerMovement>(),
+                Player = player,
                 States = states,
                 DefaultLightAttack = defaultLightAttack,
                 SheathedAttack = sheathedAttack,
@@ -144,7 +147,7 @@ namespace Player.Combat
                 if (knockbackDirection.sqrMagnitude < 0.001f && hitInfo.attacker != null)
                     knockbackDirection = transform.position - hitInfo.attacker.transform.position;
                 
-                ctx.Movement.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce * 0.3f));
+                ctx.Player.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce * 0.3f));
                 
             }
             else
@@ -153,7 +156,7 @@ namespace Player.Combat
                 if (knockbackDirection.sqrMagnitude < 0.001f && hitInfo.attacker != null)
                     knockbackDirection = transform.position - hitInfo.attacker.transform.position;
                 
-                ctx.Movement.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce));
+                ctx.Player.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce));
                 ctx.CurrentHit = hitInfo;
                 stateMachine.ForceChangeState(ctx.States.Hit);
                 cameraManager?.Shake(0.9f, 0.2f);

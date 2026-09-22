@@ -3,7 +3,6 @@ using Combat;
 using Core;
 using Input;
 using Player.Combat.States;
-using Player.Movement;
 using UnityEngine;
 
 namespace Player.Combat
@@ -14,7 +13,7 @@ namespace Player.Combat
         public PlayerAnimationManager AnimationManager;
         public CharacterController Controller;
         public InputHandler Input;
-        public PlayerMovement Movement;
+        public PlayerManager Player;
         public BoxCollider HitCollider;
         public LayerMask HittableLayers;
         public CameraManager CameraManager;

@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 56307043f7ea4999a9098acc7bf9339c, type: 3}
   m_Name: Archer Arc Attack
   m_EditorClassIdentifier: Assembly-CSharp::Enemies.Combat.RangedAttackData
-  animationName: 
+  animationName: shoot
   crossFadeDuration: 0.1
   telegraphDuration: 0.6
-  telegraphAnimation: 
+  telegraphAnimation: telegraph_shoot
   damage: 25
   poiseDamage: 10
   hitStopDuration: 0.05

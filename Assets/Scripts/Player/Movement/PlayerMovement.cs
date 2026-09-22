@@ -5,143 +5,116 @@ using UnityEngine;
 
 namespace Player.Movement
 {
-    public class PlayerMovement : MonoBehaviour
+    [DisallowMultipleComponent]
+    [RequireComponent(typeof(PlayerManager))]
+    public sealed class PlayerMovement : MonoBehaviour
     {
-        private StateMachine<MovementContext> stateMachine;
-        private MovementContext ctx;
-        private Vector3 knockbackVelocity;
+        [SerializeField, HideInInspector] private PlayerMovementConfig config;
+        private PlayerManager player;
 
-        [Header("Hit Knockback")]
-        [SerializeField, Min(0.1f)] private float knockbackDamping = 12f;
+        private StateMachine<PlayerMovement> stateMachine;
+        private PlayerMovementRuntimeData data => player.MovementData;
 
-        public bool CanMove
-        {
-            get => ctx.CanMove;
-            set => ctx.CanMove = value;
-        }
-        public bool CanSprint
-        {
-            get => ctx.CanSprint;
-            set => ctx.CanSprint = value;
-        }
-        public float SpeedMultiplier
-        {
-            get => ctx.SpeedMultiplier;
-            set => ctx.SpeedMultiplier = value;
-        }
-        public bool IsSprinting => ctx.IsSprinting;
-        public bool IsGrounded => stateMachine.CurrentState == ctx.States.Grounded;
-        public bool IsWallRunning => stateMachine.CurrentState == ctx.States.WallRun;
-        public Vector3 WallNormal => ctx.WallNormal;
+        private PlayerMovementConfig Config => player.MovementConfig;
+        public PlayerMovementRuntimeData Data => data;
+        private InputHandler Input => player.Input;
+        private CharacterController Controller => player.Controller;
+        private GrappleController Grapple => player.Grapple;
 
-        public Vector3 Velocity
-        {
-            get => ctx.Velocity;
-            set => ctx.Velocity = value;
-        }
-        public float VerticalVelocity => ctx.VerticalVelocity;
-        public float CurrentMaxSpeed => (IsSprinting ? sprintSpeed : walkSpeed) * ctx.SpeedMultiplier;
-        
+        internal GroundedState GroundedState { get; private set; }
+        internal AirborneState AirborneState { get; private set; }
+        internal WallRunState WallRunState { get; private set; }
+        internal PlayerGrappleState GrappleState { get; private set; }
+        internal DashState DashState { get; private set; }
+
+        public bool CanMove { get => data.CanMove; set => data.CanMove = value; }
+        public bool CanSprint { get => data.CanSprint; set => data.CanSprint = value; }
+        public float SpeedMultiplier { get => data.SpeedMultiplier; set => data.SpeedMultiplier = value; }
+
+        public bool IsSprinting => data.CanSprint && Input.SprintInput && data.Velocity.sqrMagnitude > 0.01f;
+        public bool IsGrounded => ReferenceEquals(stateMachine.CurrentState, GroundedState);
+        public bool IsWallRunning => ReferenceEquals(stateMachine.CurrentState, WallRunState);
+        public bool IsGrappling => ReferenceEquals(stateMachine.CurrentState, GrappleState);
+        public bool IsDashing => ReferenceEquals(stateMachine.CurrentState, DashState);
+        public Vector3 WallNormal => data.WallNormal;
+        public bool IsGrappleWallRunning => IsWallRunning && data.IsGrappleWallRunning;
+        public Vector3 WallRunDirection => data.WallRunDirection;
+        public Vector3 GrappleAnchor => data.GrappleAnchor;
+        public Vector3 Velocity { get => data.Velocity; set => data.Velocity = value; }
+        public float VerticalVelocity => data.VerticalVelocity;
+        public float CurrentMaxSpeed =>
+            (IsSprinting ? Config.Ground.SprintSpeed : Config.Ground.WalkSpeed) * data.SpeedMultiplier;
+
         public event Action<float> Landed;
-        
-        [Header("Ground Movement")]
-        [SerializeField, Min(0f)] private float walkSpeed = 6f;
-        [SerializeField, Min(0f)] private float sprintSpeed = 10f;
-        [SerializeField, Min(0f)] private float acceleration = 45f;
-        [SerializeField, Min(0f)] private float deceleration = 60f;
-        [SerializeField, Min(0f)] private float turnAcceleration = 110f;
-        [SerializeField, Range(0f, 1f)] private float airControl = 0.45f;
-
-        [Header("Jump")]
-        [SerializeField, Min(0.01f)] private float jumpHeight = 1.3f;
-        [SerializeField] private float gravity = -22f;
-        [SerializeField, Min(1f)] private float fallGravityMultiplier = 1.6f;
-        [SerializeField, Min(1f)] private float lowJumpGravityMultiplier = 2.2f;
-        [SerializeField, Min(0f)] private float maxFallSpeed = 30f;
-        [SerializeField, Range(0.05f, 1f)] private float jumpCutMultiplier = 0.5f;
-        [SerializeField, Min(0f)] private float coyoteTime = 0.15f;
-
-        [Header("Wall Run")]
-        [SerializeField] private LayerMask wallLayers;
-        [SerializeField, Min(0.05f)] private float wallCheckDistance = 0.7f;
-        [SerializeField, Min(0f)] private float wallRunSpeed = 9f;
-        [SerializeField, Min(0f)] private float wallRunAcceleration = 35f;
-        [SerializeField, Min(0.05f)] private float wallRunGravityRampDuration = 0.6f;
-        [SerializeField, Min(0f)] private float wallStickForce = 3f;
-        [SerializeField, Min(0.05f)] private float wallRunDuration = 3f;
-        [SerializeField, Min(0f)] private float wallRunCooldown = 0.2f;
-        [SerializeField, Range(0f, 1f)] private float wallRunMinInput = 0.2f;
-        [SerializeField, Min(0f)] private float wallRunMinSpeed = 2.5f;
-        [SerializeField, Min(0.01f)] private float wallJumpHeight = 1.5f;
-        [SerializeField, Min(0f)] private float wallJumpHorizontalSpeed = 7.5f;
-        [SerializeField, Min(0f)] private float wallJumpForwardCarry = 2.5f;
+        public event Action GrappleLaunched;
+        public event Action<Vector3> DashStarted;
+        public event Action DashEnded;
 
         private void Awake()
         {
-            var states = new MovementStates
-            {
-                Grounded = new GroundedState(),
-                Airborne = new AirborneState(),
-                WallRun = new WallRunState(),
-            };
+            player = GetComponent<PlayerManager>();
+            player.Initialize(config);
 
-            ctx = new MovementContext
-            {
-                Controller = GetComponentInParent<CharacterController>(),
-                Input = GetComponent<InputHandler>(),
-                Transform = transform,
-                States = states,
-                NotifyLanded = landingSpeed => Landed?.Invoke(landingSpeed),
-                WalkSpeed = walkSpeed,
-                SprintSpeed = sprintSpeed,
-                Acceleration = acceleration,
-                Deceleration = deceleration,
-                TurnAcceleration = turnAcceleration,
-                AirControl = airControl,
-                JumpHeight = jumpHeight,
-                Gravity = -Mathf.Abs(gravity),
-                FallGravityMultiplier = fallGravityMultiplier,
-                LowJumpGravityMultiplier = lowJumpGravityMultiplier,
-                MaxFallSpeed = maxFallSpeed,
-                JumpCutMultiplier = jumpCutMultiplier,
-                CoyoteTime = coyoteTime,
-                WallLayers = wallLayers,
-                WallCheckDistance = wallCheckDistance,
-                WallRunSpeed = wallRunSpeed,
-                WallRunAcceleration = wallRunAcceleration,
-                WallRunGravityRampDuration = wallRunGravityRampDuration,
-                WallStickForce = wallStickForce,
-                WallRunDuration = wallRunDuration,
-                WallRunCooldown = wallRunCooldown,
-                WallRunMinInput = wallRunMinInput,
-                WallRunMinSpeed = wallRunMinSpeed,
-                WallJumpHeight = wallJumpHeight,
-                WallJumpHorizontalSpeed = wallJumpHorizontalSpeed,
-                WallJumpForwardCarry = wallJumpForwardCarry,
-                CanMove = true,
-                CanSprint = true,
-            };
+            GroundedState = player.GetOrAddState<GroundedState>();
+            AirborneState = player.GetOrAddState<AirborneState>();
+            WallRunState = player.GetOrAddState<WallRunState>();
+            GrappleState = player.GetOrAddState<PlayerGrappleState>();
+            DashState = player.GetOrAddState<DashState>();
 
-            stateMachine = new StateMachine<MovementContext>(ctx);
-            ctx.RequestTransition = stateMachine.ChangeState;
-            stateMachine.ChangeState(ctx.States.Grounded);
+            stateMachine = new StateMachine<PlayerMovement>(this);
+            stateMachine.ChangeState(GroundedState);
+
+            if (GetComponent<DashVisualEffects>() == null)
+                gameObject.AddComponent<DashVisualEffects>();
         }
 
-        public void ApplyKnockback(Vector3 direction, float force)
+        internal void ChangeState(PlayerMovementState nextState) => stateMachine.ChangeState(nextState);
+        internal void ResumeLocomotion() => ChangeState(Controller.isGrounded && data.VerticalVelocity <= 0f
+            ? GroundedState : AirborneState);
+        internal void NotifyLanded(float speed) => Landed?.Invoke(speed);
+        internal void NotifyGrappleLaunched() => GrappleLaunched?.Invoke();
+        internal void NotifyDashStarted(Vector3 direction) => DashStarted?.Invoke(direction);
+        internal void NotifyDashEnded() => DashEnded?.Invoke();
+
+        public bool TryStartGrapple(Vector3 anchorPoint, Vector3 surfaceNormal, bool flyThrough)
         {
-            direction.y = 0f;
-            if (direction.sqrMagnitude < 0.001f || force <= 0f) return;
-            knockbackVelocity = direction.normalized * force;
+            if (!data.CanMove || IsGrappling) return false;
+            data.GrappleAnchor = anchorPoint;
+            data.GrappleNormal = surfaceNormal.normalized;
+            data.GrappleFlyThrough = flyThrough;
+            data.GrappleHeld = true;
+            ChangeState(GrappleState);
+            return IsGrappling;
+        }
+
+        public void StopGrapple()
+        {
+            data.GrappleHeld = false;
+            if (IsGrappling)
+                ResumeLocomotion();
         }
 
         private void Update()
         {
             float dt = Time.deltaTime;
-            stateMachine.Tick(dt);
-            if (knockbackVelocity.sqrMagnitude < 0.0001f) return;
+            if (dt <= 0f) return;
 
-            ctx.Controller.Move(knockbackVelocity * dt);
-            knockbackVelocity *= Mathf.Exp(-knockbackDamping * dt);
+            if (Grapple != null && Grapple.isActiveAndEnabled)
+                Grapple.ProcessInput();
+            stateMachine.Tick(dt);
+
+            player.TickKnockback(dt);
+        }
+
+        private void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            if (!IsGrappling && !data.PreserveAirMomentum) return;
+            Vector3 velocity = data.Velocity + Vector3.up * data.VerticalVelocity;
+            float intoSurface = Vector3.Dot(velocity, hit.normal);
+            if (intoSurface >= 0f) return;
+            velocity -= hit.normal * intoSurface;
+            data.Velocity = Vector3.ProjectOnPlane(velocity, Vector3.up);
+            data.VerticalVelocity = velocity.y;
         }
     }
 }

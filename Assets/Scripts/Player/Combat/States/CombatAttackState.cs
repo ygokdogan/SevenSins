@@ -25,7 +25,7 @@ namespace Player.Combat.States
             hitThisAttack.Clear();
             
             ctx.Input.UsePrimaryAttackInput();
-            ctx.Movement.CanSprint = false;
+            ctx.Player.CanSprint = false;
             
             ctx.IsSheathed = false;
             ctx.IsComboWindowOpen = false;
@@ -45,15 +45,15 @@ namespace Player.Combat.States
 
             if (currentCtx.CurrentAttack.hasLunge)
             {
-                currentCtx.Movement.CanMove = false;
-                currentCtx.Movement.Velocity = Vector3.zero;
+                currentCtx.Player.CanMove = false;
+                currentCtx.Player.StopPlanarMovement();
                 currentLungeSpeed = currentCtx.CurrentAttack.forwardImpulse;
                 isStationaryLunge = false;
             }
             else if (isStandingStill && currentCtx.CurrentAttack.forwardImpulse > 0.01f)
             {
-                currentCtx.Movement.CanMove = false;
-                currentCtx.Movement.Velocity = Vector3.zero;
+                currentCtx.Player.CanMove = false;
+                currentCtx.Player.StopPlanarMovement();
                 currentLungeSpeed = currentCtx.CurrentAttack.forwardImpulse;
                 isStationaryLunge = true;
             }
@@ -94,8 +94,8 @@ namespace Player.Combat.States
             ctx.OnLungeTriggered -= HandleLunge;
             hitThisAttack.Clear();
             
-            ctx.Movement.CanSprint = true;
-            ctx.Movement.CanMove = true;
+            ctx.Player.CanSprint = true;
+            ctx.Player.CanMove = true;
             
             currentLungeSpeed = 0f;
             isStationaryLunge = false;
@@ -111,19 +111,19 @@ namespace Player.Combat.States
                 if (ctx.Input.MoveInput.sqrMagnitude > 0.01f || currentLungeSpeed <= 0.01f)
                 {
                     currentLungeSpeed = 0f;
-                    ctx.Movement.CanMove = true;
+                    ctx.Player.CanMove = true;
                     isStationaryLunge = false;
                 }
             }
 
             if (ctx.IsComboWindowOpen)
             {
-                ctx.Movement.CanMove = true;
+                ctx.Player.CanMove = true;
             }
             
             if (currentLungeSpeed > 0.01f)
             {
-                Vector3 currentMoveVel = ctx.Movement != null ? ctx.Movement.Velocity : Vector3.zero;
+                Vector3 currentMoveVel = ctx.Player.MovementData.Velocity;
                 Vector3 desiredLungeVel = lungeDirection * currentLungeSpeed;
                 Vector3 extraVelocity = desiredLungeVel - currentMoveVel;
 

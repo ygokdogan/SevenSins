@@ -13,6 +13,8 @@ namespace Input
         public Vector2 MoveInput { get; private set; }
         public Vector2 LookInput { get; private set; }
         public bool SprintInput { get; private set; }
+        public bool DashInput { get; private set; }
+        private float dashInputStartTime = -2f;
         
         public bool JumpInput { get; private set; }
         public bool JumpInputReleased { get; private set; }
@@ -29,6 +31,10 @@ namespace Input
         public bool IsBlockHeld { get; private set; }
         private float blockInputStartTime = -2f;
 
+        public bool GrappleInput { get; private set; }
+        public bool IsGrappleHeld { get; private set; }
+        private float grappleInputStartTime = -2f;
+
 
         private void Awake()
         {
@@ -40,7 +46,12 @@ namespace Input
             actions.Player.Look.performed += ctx => LookInput = ctx.ReadValue<Vector2>();
             actions.Player.Look.canceled += ctx => LookInput = Vector2.zero;
             
-            actions.Player.Sprint.performed += ctx => SprintInput = true;
+            actions.Player.Sprint.performed += ctx =>
+            {
+                SprintInput = true;
+                DashInput = true;
+                dashInputStartTime = Time.time;
+            };
             actions.Player.Sprint.canceled += ctx => SprintInput = false;
 
             actions.Player.Jump.performed += ctx =>
@@ -78,6 +89,14 @@ namespace Input
             {
                 IsBlockHeld = false;
             };
+
+            actions.Player.Grapple.performed += ctx =>
+            {
+                GrappleInput = true;
+                IsGrappleHeld = true;
+                grappleInputStartTime = Time.time;
+            };
+            actions.Player.Grapple.canceled += ctx => IsGrappleHeld = false;
         }
 
         private void Update()
@@ -86,6 +105,8 @@ namespace Input
             SheatheBuffer();
             PrimaryAttackBuffer();
             BlockBuffer();
+            GrappleBuffer();
+            DashBuffer();
         }
 
         private void JumpBuffer()
@@ -120,11 +141,27 @@ namespace Input
             }
         }
 
+        private void GrappleBuffer()
+        {
+            if (GrappleInput && Time.time >= grappleInputStartTime + inputHoldTime)
+            {
+                GrappleInput = false;
+            }
+        }
+
+        private void DashBuffer()
+        {
+            if (DashInput && Time.time >= dashInputStartTime + inputHoldTime)
+                DashInput = false;
+        }
+
         public void UseSprintInput() => SprintInput = false;
+        public void UseDashInput() => DashInput = false;
         public void UseJumpInput() => JumpInput = false;
         public void UseSheatheInput() => SheatheInput = false;
         public void UsePrimaryAttackInput() => PrimaryAttackInput = false;
         public void UseBlockInput() => BlockInput = false;
+        public void UseGrappleInput() => GrappleInput = false;
         
         public void ConsumeJumpRelease() => JumpInputReleased = false;
         

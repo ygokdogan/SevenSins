@@ -20,6 +20,10 @@ namespace Player
         [SerializeField] private float defaultFov = 60f;
         [SerializeField] private float sprintFov = 80f;
         [SerializeField] private float wallRunFov = 74f;
+        [SerializeField] private float grappleFov = 80f;
+        [SerializeField] private float dashFov = 88f;
+        [SerializeField, Min(0f)] private float dashFovInterpSpeed = 35f;
+        private float grappleLaunchFovTimer;
         [SerializeField] private float fovInterpSpeed = 8f;
         
         [Header("Bob")]
@@ -57,6 +61,7 @@ namespace Player
         private float currentPitch;
         private float currentTilt;
         private float wallRunStartYaw;
+        private float wallRunLookOffset;
         private float wallRunWallSide;
         private bool wasWallRunning;
         private float bobPhase;
@@ -84,12 +89,18 @@ namespace Player
         {
             cameraBobDefaultPos = cameraBobPivot.localPosition;
             playerMovement.Landed += OnLanded;
+            playerMovement.GrappleLaunched += OnGrappleLaunched;
+            playerMovement.DashStarted += OnDashStarted;
         }
 
         private void OnDestroy()
         {
             if (playerMovement != null)
+            {
                 playerMovement.Landed -= OnLanded;
+                playerMovement.GrappleLaunched -= OnGrappleLaunched;
+                playerMovement.DashStarted -= OnDashStarted;
+            }
         }
 
         private void Update()
@@ -103,24 +114,37 @@ namespace Player
         private void CameraLook()
         {
             Vector2 look = input.LookInput * sensitivity;
+            // Pitch remains responsive while wall-running as well as during the approach.
+            currentPitch = Mathf.Clamp(currentPitch - look.y, minPitch, maxPitch);
+            cameraPitchPivot.localRotation = Quaternion.Euler(currentPitch, 0.0f, 0.0f);
 
             if (playerMovement.IsWallRunning)
             {
                 if (!wasWallRunning)
                 {
-                    wallRunStartYaw = transform.eulerAngles.y;
-                    wallRunWallSide = Mathf.Sign(Vector3.Dot(-playerMovement.WallNormal, transform.right));
+                    Vector3 runDirection = playerMovement.WallRunDirection;
+                    wallRunStartYaw = playerMovement.IsGrappleWallRunning && runDirection.sqrMagnitude > 0.01f
+                        ? Quaternion.LookRotation(runDirection).eulerAngles.y : transform.eulerAngles.y;
+                    Vector3 referenceRight = Quaternion.Euler(0f, wallRunStartYaw, 0f) * Vector3.right;
+                    wallRunWallSide = Mathf.Sign(Vector3.Dot(-playerMovement.WallNormal, referenceRight));
+                    wallRunLookOffset = 0f;
                     wasWallRunning = true;
                 }
 
-                float currentYawOffset = Mathf.DeltaAngle(wallRunStartYaw, transform.eulerAngles.y);
+                float currentYawOffset = playerMovement.IsGrappleWallRunning
+                    ? wallRunLookOffset : Mathf.DeltaAngle(wallRunStartYaw, transform.eulerAngles.y);
                 float minYaw = wallRunWallSide < 0f ? -wallRunTowardWallYawLimit : -wallRunYawLimit;
                 float maxYaw = wallRunWallSide > 0f ? wallRunTowardWallYawLimit : wallRunYawLimit;
                 float clampedYawOffset = Mathf.Clamp(
                     currentYawOffset + look.x,
                     minYaw,
                     maxYaw);
-                transform.rotation = Quaternion.Euler(0f, wallRunStartYaw + clampedYawOffset, 0f);
+                wallRunLookOffset = clampedYawOffset;
+                float targetYaw = wallRunStartYaw + clampedYawOffset;
+                float yaw = playerMovement.IsGrappleWallRunning
+                    ? Mathf.LerpAngle(transform.eulerAngles.y, targetYaw, 1f - Mathf.Exp(-12f * Time.deltaTime))
+                    : targetYaw;
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
                 return;
             }
 
@@ -128,8 +152,6 @@ namespace Player
             
             transform.Rotate(Vector3.up * look.x);
             
-            currentPitch = Mathf.Clamp(currentPitch - look.y, minPitch, maxPitch);
-            cameraPitchPivot.localRotation = Quaternion.Euler(currentPitch, 0.0f, 0.0f);
         }
 
         private void CameraBob()
@@ -234,12 +256,29 @@ namespace Player
             cameraTiltPivot.localRotation = Quaternion.Euler(0.0f, 0.0f, currentTilt);
         }
 
+        private void OnGrappleLaunched()
+        {
+            grappleLaunchFovTimer = 0.45f;
+            Shake(0.22f, 0.09f);
+        }
+
+        private void OnDashStarted(Vector3 direction)
+        {
+            Shake(0.16f, 0.07f);
+        }
+
         private void UpdateFov()
         {
-            float targetFov = playerMovement.IsWallRunning
+            grappleLaunchFovTimer = Mathf.Max(0f, grappleLaunchFovTimer - Time.deltaTime);
+            float targetFov = playerMovement.IsDashing
+                ? dashFov
+                : playerMovement.IsGrappling || grappleLaunchFovTimer > 0f
+                ? grappleFov
+                : playerMovement.IsWallRunning
                 ? wallRunFov
                 : playerMovement.IsSprinting ? sprintFov : defaultFov;
-            cam.fieldOfView = Mathf.MoveTowards(cam.fieldOfView, targetFov, fovInterpSpeed * Time.deltaTime);
+            float speed = playerMovement.IsDashing ? dashFovInterpSpeed : fovInterpSpeed;
+            cam.fieldOfView = Mathf.MoveTowards(cam.fieldOfView, targetFov, speed * Time.deltaTime);
         }
     }
 }
