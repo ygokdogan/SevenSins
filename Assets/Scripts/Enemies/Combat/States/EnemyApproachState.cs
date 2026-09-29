@@ -3,27 +3,44 @@ using UnityEngine;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyApproachState : IState<EnemyCombatContext>
+    public class EnemyApproachState : IState<EnemyBase>
     {
-        public void Enter(EnemyCombatContext ctx)
+        private readonly bool attackDirectly;
+
+        public EnemyApproachState(bool attackDirectly = false) =>
+            this.attackDirectly = attackDirectly;
+
+        public void Enter(EnemyBase enemy)
         {
-            ctx.AnimationManager?.PlayAnimation("Idle");
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.Sprint);
+            enemy.AnimationManager?.PlayAnimation("Idle");
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.Sprint);
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (ctx.Target == null) { ctx.RequestTransition(ctx.States.Idle); return; }
-            ctx.Movement.FaceTarget(ctx.Target, dt);
-            float engagementRange = ctx.AttackStyle.EngagementRange(ctx);
-            if (ctx.HorizontalDistance <= engagementRange)
+            if (enemy.Target == null) { enemy.RequestTransition(enemy.States.Idle); return; }
+            enemy.Movement.FaceTarget(enemy.Target, dt);
+            if (attackDirectly)
             {
-                ctx.RequestTransition(ctx.States.Stalk);
+                if (Time.time >= enemy.NextAttackTime &&
+                    enemy.AttackStyle.CanStartAttack(enemy))
+                {
+                    enemy.RequestTransition(enemy.States.Attack);
+                    return;
+                }
+                enemy.Movement.MoveTo(enemy.Target.position, enemy.SprintSpeed,
+                    enemy.AttackStyle.DesiredDistance(enemy) * 0.7f);
                 return;
             }
-            ctx.Movement.MoveTo(ctx.Target.position, ctx.SprintSpeed, engagementRange * 0.85f);
+            float engagementRange = enemy.EngagementRange;
+            if (enemy.HorizontalDistance <= engagementRange)
+            {
+                enemy.RequestTransition(enemy.States.Engage);
+                return;
+            }
+            enemy.Movement.MoveTo(enemy.Target.position, enemy.SprintSpeed, engagementRange * 0.85f);
         }
 
-        public void Exit(EnemyCombatContext ctx) => ctx.Movement.Stop();
+        public void Exit(EnemyBase enemy) => enemy.Movement.Stop();
     }
 }

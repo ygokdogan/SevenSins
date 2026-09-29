@@ -1,151 +1,183 @@
 using System.Collections.Generic;
 using Combat;
-using Core;
+using Player.Movement;
 using UnityEngine;
 
 namespace Player.Combat.States
 {
-    public class CombatAttackState : IState<CombatContext>
+    public class CombatAttackState : PlayerCombatState
     {
-        private CombatContext currentCtx;
-        
+        private PlayerCombat combat;
+        private BoxCollider hitCollider;
+        private LayerMask hittableLayers;
+        private bool comboWindowOpen;
+        private bool attackWindowOpen;
+        private bool animationFinished;
         private Vector3 lungeDirection;
         private float currentLungeSpeed;
         private bool isStationaryLunge;
-        
-        private HashSet<Collider> hitThisAttack = new HashSet<Collider>();
-        
-        public void Enter(CombatContext ctx)
+        private readonly HashSet<Collider> hitTargets = new();
+
+        public AttackData CurrentAttack { get; private set; }
+        public bool IsAttackWindowOpen => attackWindowOpen && !animationFinished;
+        public uint AttackSequence { get; private set; }
+        public uint AttackWindowSequence { get; private set; }
+
+        public override void Initialize(PlayerCombat combat)
         {
-            currentCtx = ctx;
-            currentLungeSpeed = 0f;
-            isStationaryLunge = false;
-            lungeDirection = ctx.Transform.forward;
-
-            hitThisAttack.Clear();
-            
-            ctx.Input.UsePrimaryAttackInput();
-            ctx.Player.CanSprint = false;
-            
-            ctx.IsSheathed = false;
-            ctx.IsComboWindowOpen = false;
-            ctx.IsAnimationFinished = false;
-
-            ctx.OnLungeTriggered += HandleLunge;
-            
-            ctx.AnimationManager.PlayAttackAnimation(ctx.CurrentAttack.animationName,
-                ctx.CurrentAttack.crossFadeDuration);
+            base.Initialize(combat);
+            this.combat = combat;
+            hitCollider = combat.HitCollider;
+            hittableLayers = combat.HittableLayers;
         }
 
-        private void HandleLunge()
+        public bool Begin(PlayerCombat combat, AttackData attack)
         {
-            if (currentCtx?.CurrentAttack == null) return;
+            if (attack == null) return false;
+            CurrentAttack = attack;
+            if (combat.CurrentState == this) Enter(combat);
+            else combat.ChangeState(this);
+            return true;
+        }
+        
+        public override void Enter(PlayerCombat combat)
+        {
+            AttackSequence++;
+            player.Movement.Restrictions.RemoveAll(this);
+            currentLungeSpeed = 0f;
+            isStationaryLunge = false;
+            lungeDirection = combat.transform.forward;
 
-            bool isStandingStill = currentCtx.Input.MoveInput.sqrMagnitude < 0.01f;
+            hitTargets.Clear();
+            
+            player.Input.UsePrimaryAttackInput();
+            player.Movement.Restrictions.Add(this, MovementRestriction.Sprint);
+            
+            combat.IsSheathed = false;
+            comboWindowOpen = false;
+            animationFinished = false;
+            attackWindowOpen = false;
 
-            if (currentCtx.CurrentAttack.hasLunge)
+            player.AnimationManager.PlayAttackAnimation(CurrentAttack.animationName,
+                CurrentAttack.crossFadeDuration);
+        }
+
+        public override void OnLungeTriggered()
+        {
+            if (CurrentAttack == null) return;
+
+            bool isStandingStill = player.Input.MoveInput.sqrMagnitude < 0.01f;
+
+            if (CurrentAttack.hasLunge)
             {
-                currentCtx.Player.CanMove = false;
-                currentCtx.Player.StopPlanarMovement();
-                currentLungeSpeed = currentCtx.CurrentAttack.forwardImpulse;
+                player.Movement.Restrictions.Add(this, MovementRestriction.Move);
+                player.Movement.StopPlanarMovement();
+                currentLungeSpeed = CurrentAttack.forwardImpulse;
                 isStationaryLunge = false;
             }
-            else if (isStandingStill && currentCtx.CurrentAttack.forwardImpulse > 0.01f)
+            else if (isStandingStill && CurrentAttack.forwardImpulse > 0.01f)
             {
-                currentCtx.Player.CanMove = false;
-                currentCtx.Player.StopPlanarMovement();
-                currentLungeSpeed = currentCtx.CurrentAttack.forwardImpulse;
+                player.Movement.Restrictions.Add(this, MovementRestriction.Move);
+                player.Movement.StopPlanarMovement();
+                currentLungeSpeed = CurrentAttack.forwardImpulse;
                 isStationaryLunge = true;
             }
         }
 
-        public void Tick(CombatContext ctx, float dt)
+        public override void Tick(PlayerCombat combat, float deltaTime)
         {
-            HandleAttackLunge(ctx, dt);
+            HandleAttackLunge(deltaTime);
             HandleAttack();
+            if (combat.CurrentState != this) return;
             
-            if (ctx.IsComboWindowOpen && ctx.Input.PrimaryAttackInput)
+            if (comboWindowOpen && player.Input.PrimaryAttackInput)
             {
-                if (ctx.CurrentAttack != null && ctx.CurrentAttack.nextLightAttack != null)
+                if (CurrentAttack != null && CurrentAttack.nextLightAttack != null)
                 {
-                    ctx.Input.UsePrimaryAttackInput();
-                    ctx.CurrentAttack = ctx.CurrentAttack.nextLightAttack;
+                    player.Input.UsePrimaryAttackInput();
+                    CurrentAttack = CurrentAttack.nextLightAttack;
                     
-                    ctx.OnLungeTriggered -= HandleLunge;
-                    Enter(ctx);
+                    Enter(combat);
                     return;
                 }
             }
 
-            if (ctx.IsComboWindowOpen && (ctx.Input.BlockInput || ctx.Input.IsBlockHeld))
+            if (comboWindowOpen && (player.Input.BlockInput || player.Input.IsBlockHeld))
             {
-                ctx.RequestTransition(ctx.States.Block);
+                combat.ChangeState(combat.BlockState);
                 return;
             }
 
-            if (ctx.IsAnimationFinished)
+            if (animationFinished)
             {
-                ctx.RequestTransition(ctx.States.Idle);
+                combat.ChangeState(combat.IdleState);
             }
         }
 
-        public void Exit(CombatContext ctx)
+        public override void Exit(PlayerCombat combat)
         {
-            ctx.OnLungeTriggered -= HandleLunge;
-            hitThisAttack.Clear();
-            
-            ctx.Player.CanSprint = true;
-            ctx.Player.CanMove = true;
-            
+            player.Movement.Restrictions.RemoveAll(this);
+            hitTargets.Clear();
+
             currentLungeSpeed = 0f;
             isStationaryLunge = false;
-            currentCtx = null;
-            ctx.IsComboWindowOpen = false;
-            ctx.IsAnimationFinished = true;
+            comboWindowOpen = false;
+            animationFinished = false;
+            attackWindowOpen = false;
+            CurrentAttack = null;
         }
 
-        private void HandleAttackLunge(CombatContext ctx, float dt)
+        public override void OnComboWindowOpened() => comboWindowOpen = true;
+        public override void OnComboWindowClosed() => comboWindowOpen = false;
+        public override void OnAttackWindowOpened()
+        {
+            attackWindowOpen = true;
+            AttackWindowSequence++;
+        }
+        public override void OnAttackWindowClosed() => attackWindowOpen = false;
+        public override void OnAnimationFinished() => animationFinished = true;
+
+        private void HandleAttackLunge(float deltaTime)
         {
             if (isStationaryLunge)
             {
-                if (ctx.Input.MoveInput.sqrMagnitude > 0.01f || currentLungeSpeed <= 0.01f)
+                if (player.Input.MoveInput.sqrMagnitude > 0.01f || currentLungeSpeed <= 0.01f)
                 {
                     currentLungeSpeed = 0f;
-                    ctx.Player.CanMove = true;
+                    player.Movement.Restrictions.Remove(this, MovementRestriction.Move);
                     isStationaryLunge = false;
                 }
             }
 
-            if (ctx.IsComboWindowOpen)
+            if (comboWindowOpen)
             {
-                ctx.Player.CanMove = true;
+                player.Movement.Restrictions.Remove(this, MovementRestriction.Move);
             }
             
             if (currentLungeSpeed > 0.01f)
             {
-                Vector3 currentMoveVel = ctx.Player.MovementData.Velocity;
-                Vector3 desiredLungeVel = lungeDirection * currentLungeSpeed;
-                Vector3 extraVelocity = desiredLungeVel - currentMoveVel;
+                Vector3 currentMoveVelocity = player.Movement.Velocity;
+                Vector3 desiredLungeVelocity = lungeDirection * currentLungeSpeed;
+                Vector3 extraVelocity = desiredLungeVelocity - currentMoveVelocity;
 
-                ctx.Controller.Move(extraVelocity * dt);
+                player.Controller.Move(extraVelocity * deltaTime);
 
-                float decay = ctx.CurrentAttack != null ? ctx.CurrentAttack.impulseDecay : 25f;
-                currentLungeSpeed = Mathf.MoveTowards(currentLungeSpeed, 0f, decay * dt);
+                float decay = CurrentAttack != null ? CurrentAttack.impulseDecay : 25f;
+                currentLungeSpeed = Mathf.MoveTowards(currentLungeSpeed, 0f, decay * deltaTime);
             }
         }
 
         private void HandleAttack()
         {
-            if (!currentCtx.IsAttackWindowOpen) return;
+            if (!attackWindowOpen) return;
 
-            var col = currentCtx.HitCollider;
-            Vector3 center = col.transform.TransformPoint(col.center);
-            Vector3 halfExtents = Vector3.Scale(col.size, col.transform.lossyScale) * 0.5f;
-            Quaternion orientation = col.transform.rotation;
+            Vector3 center = hitCollider.transform.TransformPoint(hitCollider.center);
+            Vector3 halfExtents = Vector3.Scale(hitCollider.size, hitCollider.transform.lossyScale) * 0.5f;
+            Quaternion orientation = hitCollider.transform.rotation;
             
-            Collider[] hits = Physics.OverlapBox(center, halfExtents, orientation, currentCtx.HittableLayers);
+            Collider[] hits = Physics.OverlapBox(center, halfExtents, orientation, hittableLayers);
 
-            var attack = currentCtx.CurrentAttack;
+            var attack = CurrentAttack;
             float damage = attack != null ? attack.damage : 25f;
             float poiseDamage = attack != null ? attack.poiseDamage : 10f;
             float hitStopDuration = attack != null ? attack.hitStopDuration : 0.05f;
@@ -154,18 +186,17 @@ namespace Player.Combat.States
 
             foreach (var hit in hits)
             {
-                if (!hitThisAttack.Contains(hit))
+                if (hitTargets.Add(hit))
                 {
-                    hitThisAttack.Add(hit);
                     if (hit.TryGetComponent(out IDamageable damageable))
                     {
-                        Vector3 hitPoint = HitPointUtility.OnTargetSurface(hit, currentCtx.Transform.position, out Vector3 hitNormal);
-                        Vector3 hitDir = hit.transform.position - currentCtx.Transform.position;
+                        Vector3 hitPoint = HitPointUtility.OnTargetSurface(hit, combat.transform.position, out Vector3 hitNormal);
+                        Vector3 hitDir = hit.transform.position - combat.transform.position;
                         hitDir.y = 0f;
                         if (hitDir.sqrMagnitude > 0.001f)
                             hitDir.Normalize();
                         else
-                            hitDir = currentCtx.Transform.forward;
+                            hitDir = combat.transform.forward;
 
                         HitInfo info = new HitInfo
                         {
@@ -176,10 +207,11 @@ namespace Player.Combat.States
                             hitPoint = hitPoint,
                             hitNormal = hitNormal,
                             hitDirection = hitDir,
-                            attacker = currentCtx.Transform.gameObject
+                            attacker = combat.transform.gameObject
                         };
 
                         damageable.TakeHit(info);
+                        if (damage > 0f) combat.NotifyHitConfirmed();
 
                         if (attack != null && attack.hitVfxPrefab != null)
                         {
@@ -193,8 +225,9 @@ namespace Player.Combat.States
                             }
                         }
 
-                        currentCtx.CameraManager?.Shake(0.22f, 0.1f);
-                        currentCtx.TriggerHitStop?.Invoke(hitStopDuration);
+                        player.Camera?.Shake(0.22f, 0.1f);
+                        combat.TriggerHitStop(hitStopDuration);
+                        if (combat.CurrentState != this) return;
                     }
                 }
             }

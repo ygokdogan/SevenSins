@@ -1,158 +1,155 @@
 using UnityEngine;
 
-namespace Player.Movement
+namespace Player.Movement.States
 {
     public sealed class WallRunState : PlayerMovementState
     {
+        private PlayerMovementConfig.WallRunSettings config;
+        private PlayerMovementConfig.JumpSettings jumpConfig;
+
+        public override void Initialize(PlayerMovement movement)
+        {
+            config = movement.config.WallRun;
+            jumpConfig = movement.config.Jump;
+        }
+
+        [SerializeField] private WallRunCameraProfile wallRunCameraProfile = new();
+        public override StateCameraProfile CameraProfile => wallRunCameraProfile;
+
         private float timeRemaining;
         private float gravityRampTimer;
         private Vector3 runDirection;
-        private bool enteredFromGrapple;
-        private int grappleWallLayers;
+        private int wallLayers;
+        private float cooldownTimer;
+        private bool hasConsumedSurface;
+        private Vector3 lastWallNormal;
+        private Vector3 lastWallPoint;
 
-        public bool CanStart(PlayerMovement player)
+        public Vector3 WallNormal { get; private set; }
+        public Vector3 RunDirection => runDirection;
+
+        public void ResetOnLanding()
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.WallRunSettings config = player.Config.WallRun;
-            if (!data.CanMove || player.Controller.isGrounded || data.WallRunCooldownTimer > 0f)
+            cooldownTimer = 0f;
+            hasConsumedSurface = false;
+            lastWallNormal = Vector3.zero;
+            lastWallPoint = Vector3.zero;
+            WallNormal = Vector3.zero;
+        }
+
+        public void TickCooldown(float dt) => cooldownTimer = Mathf.Max(0f, cooldownTimer - dt);
+        public void StartCooldown(float duration) => cooldownTimer = duration;
+
+        public void Begin(PlayerMovement movement, Vector3 surfaceNormal, int layers)
+        {
+            WallNormal = Vector3.ProjectOnPlane(surfaceNormal, Vector3.up).normalized;
+            wallLayers = layers;
+            movement.ChangeState(this);
+        }
+
+        public bool TryStart(PlayerMovement player)
+        {
+            if (!player.CanMove || player.Player.Controller.isGrounded || cooldownTimer > 0f)
                 return false;
-            if (player.Input.MoveInput.y < config.MinInput)
+            if (player.Player.Input.MoveInput.y < config.MinInput)
                 return false;
 
-            Vector3 planarVelocity = Vector3.ProjectOnPlane(data.Velocity, Vector3.up);
+            Vector3 planarVelocity = Vector3.ProjectOnPlane(player.Velocity, Vector3.up);
             Vector3 forward = Vector3.ProjectOnPlane(player.transform.forward, Vector3.up);
             if (planarVelocity.magnitude < config.MinSpeed || Vector3.Dot(forward, planarVelocity) <= 0f)
                 return false;
 
-            return TryFindWall(player, out Vector3 normal, out RaycastHit hit) &&
-                   !IsConsumedSurface(data, normal, hit.point);
+            if (!TryFindWall(player, out Vector3 normal, out RaycastHit hit) ||
+                IsConsumedSurface(normal, hit.point)) return false;
+
+            Begin(player, normal, config.Layers);
+            return player.IsWallRunning;
         }
 
-        public override void Enter(PlayerMovement player)
+        public override void Enter(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.WallRunSettings config = player.Config.WallRun;
-            enteredFromGrapple = data.GrappleWallRunEntry;
-            data.IsGrappleWallRunning = enteredFromGrapple;
-            data.GrappleWallRunEntry = false;
-            grappleWallLayers = enteredFromGrapple && player.Grapple != null
-                ? player.Grapple.AnchorLayerMask : 0;
+            cooldownTimer = 0f;
 
-            if (enteredFromGrapple)
-            {
-                data.WallNormal = data.GrappleNormal;
-                data.WallRunCooldownTimer = 0f;
-            }
-
-            data.PreserveAirMomentum = false;
+            movement.AirborneState.SetMomentumPreservation(false);
             timeRemaining = config.Duration;
             gravityRampTimer = 0f;
-            if (!FindCurrentWall(player, out Vector3 entryNormal, out RaycastHit hit))
+            if (!FindCurrentWall(movement, out Vector3 entryNormal, out RaycastHit hit))
             {
-                data.PreserveAirMomentum = enteredFromGrapple;
-                data.WallRunCooldownTimer = config.Cooldown;
-                player.ChangeState(player.AirborneState);
+                cooldownTimer = config.Cooldown;
+                movement.ChangeState(movement.AirborneState);
                 return;
             }
 
-            data.WallNormal = entryNormal;
-            data.HasConsumedWallRunSurface = true;
-            data.LastWallRunNormal = data.WallNormal;
-            data.LastWallRunPoint = hit.point;
-            runDirection = GetRunDirection(player, data.WallNormal);
+            WallNormal = entryNormal;
+            hasConsumedSurface = true;
+            lastWallNormal = WallNormal;
+            lastWallPoint = hit.point;
+            runDirection = GetRunDirection(movement, WallNormal);
 
-            if (enteredFromGrapple)
-            {
-                Vector3 tangent = Vector3.Cross(Vector3.up, data.WallNormal).normalized;
-                float sideInput = Vector3.Dot(player.transform.right * player.Input.MoveInput.x, tangent);
-                if (Mathf.Abs(sideInput) > 0.1f)
-                    runDirection = tangent * Mathf.Sign(sideInput);
-                else if (Mathf.Abs(Vector3.Dot(player.transform.forward, tangent)) < 0.1f &&
-                         Mathf.Abs(Vector3.Dot(data.Velocity, tangent)) < 0.1f)
-                    runDirection = tangent * (Vector3.Dot(player.transform.right, tangent) >= 0f ? 1f : -1f);
+            movement.Velocity = runDirection * config.Speed;
+            movement.VerticalVelocity = 0f;
 
-                float carry = Mathf.Max(config.MinSpeed, Vector3.Dot(data.Velocity, runDirection));
-                data.Velocity = runDirection * Mathf.Min(carry, config.Speed);
-            }
-
-            data.WallRunDirection = runDirection;
-            data.VerticalVelocity = 0f;
         }
 
-        public override void Tick(PlayerMovement player, float dt)
+        public override void Tick(PlayerMovement movement, float dt)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.WallRunSettings config = player.Config.WallRun;
             timeRemaining -= dt;
-            bool stopInput = enteredFromGrapple
-                ? player.Input.MoveInput.y < -config.MinInput
-                : player.Input.MoveInput.y < config.MinInput;
-            if (!data.CanMove || stopInput || !FindCurrentWall(player, out Vector3 wallNormal, out _))
+            bool stopInput = movement.Player.Input.MoveInput.y < config.MinInput;
+            if (!movement.CanMove || stopInput || !FindCurrentWall(movement, out Vector3 wallNormal, out _))
             {
-                LeaveWall(player);
+                LeaveWall(movement);
                 return;
             }
 
-            data.WallNormal = wallNormal;
-            Vector3 desiredDirection = GetRunDirection(player, wallNormal);
+            WallNormal = wallNormal;
+            Vector3 desiredDirection = GetRunDirection(movement, wallNormal);
             if (Vector3.Dot(desiredDirection, runDirection) < 0f) desiredDirection = runDirection;
             runDirection = Vector3.Slerp(runDirection, desiredDirection, 12f * dt).normalized;
-            data.WallRunDirection = runDirection;
 
-            if (player.Input.JumpInput)
+            if (movement.Player.Input.JumpInput)
             {
-                player.Input.UseJumpInput();
-                player.Input.ConsumeJumpRelease();
-                data.Velocity = wallNormal * config.JumpHorizontalSpeed + runDirection * config.JumpForwardCarry;
-                data.VerticalVelocity = Mathf.Sqrt(config.JumpHeight * 2f * player.Config.Jump.Gravity);
-                data.WallRunCooldownTimer = config.Cooldown;
-                player.ChangeState(player.AirborneState);
+                movement.Player.Input.UseJumpInput();
+                movement.Player.Input.ConsumeJumpRelease();
+                movement.Velocity = wallNormal * config.JumpHorizontalSpeed + runDirection * config.JumpForwardCarry;
+                movement.VerticalVelocity = Mathf.Sqrt(config.JumpHeight * 2f * jumpConfig.Gravity);
+                cooldownTimer = config.Cooldown;
+                movement.ChangeState(movement.AirborneState);
                 return;
             }
 
-            Vector3 planarVelocity = Vector3.MoveTowards(
-                Vector3.ProjectOnPlane(data.Velocity, Vector3.up),
-                runDirection * config.Speed,
-                config.Acceleration * dt);
-            data.Velocity = planarVelocity;
+            Vector3 planarVelocity = runDirection * config.Speed;
+            movement.Velocity = planarVelocity;
 
             if (timeRemaining > 0f)
-                data.VerticalVelocity = 0f;
+                movement.VerticalVelocity = 0f;
             else
             {
                 gravityRampTimer += dt;
                 float gravityBlend = Mathf.Clamp01(gravityRampTimer / config.GravityRampDuration);
-                data.VerticalVelocity = Mathf.Max(
-                    data.VerticalVelocity - player.Config.Jump.Gravity * gravityBlend * dt,
-                    -player.Config.Jump.MaxFallSpeed);
+                movement.VerticalVelocity = Mathf.Max(
+                    movement.VerticalVelocity - jumpConfig.Gravity * gravityBlend * dt,
+                    -jumpConfig.MaxFallSpeed);
                 if (gravityBlend >= 1f)
                 {
-                    LeaveWall(player);
+                    LeaveWall(movement);
                     return;
                 }
             }
 
-            Vector3 motion = planarVelocity + Vector3.up * data.VerticalVelocity - wallNormal * config.StickForce;
-            player.Controller.Move(motion * dt);
-            if (player.Controller.isGrounded)
-                player.ChangeState(player.GroundedState);
+            Vector3 motion = planarVelocity + Vector3.up * movement.VerticalVelocity - wallNormal * config.StickForce;
+            movement.Player.Controller.Move(motion * dt);
+            if (movement.Player.Controller.isGrounded)
+                movement.ChangeState(movement.GroundedState);
         }
 
-        public override void Exit(PlayerMovement player)
-        {
-            player.Data.IsGrappleWallRunning = false;
-            enteredFromGrapple = false;
-        }
+        public override void Exit(PlayerMovement movement) { }
 
         private bool FindCurrentWall(PlayerMovement player, out Vector3 normal, out RaycastHit hit)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            if (!enteredFromGrapple) return TryFindWall(player, out normal, out hit);
-
-            float radius = Mathf.Max(0.05f, player.Controller.radius * 0.65f);
-            if (Physics.SphereCast(player.Controller.bounds.center, radius, -data.WallNormal,
-                out hit, player.Config.WallRun.CheckDistance, grappleWallLayers, QueryTriggerInteraction.Ignore)
-                && IsRunnable(hit.normal) && Vector3.Dot(hit.normal, data.WallNormal) > 0.5f)
+            float radius = Mathf.Max(0.05f, player.Player.Controller.radius * 0.65f);
+            if (Physics.SphereCast(player.Player.Controller.bounds.center, radius, -WallNormal,
+                out hit, config.CheckDistance, wallLayers, QueryTriggerInteraction.Ignore)
+                && IsRunnable(hit.normal) && Vector3.Dot(hit.normal, WallNormal) > 0.5f)
             {
                 normal = Vector3.ProjectOnPlane(hit.normal, Vector3.up).normalized;
                 return true;
@@ -163,17 +160,17 @@ namespace Player.Movement
             return false;
         }
 
-        private static void LeaveWall(PlayerMovement player)
+        private void LeaveWall(PlayerMovement movement)
         {
-            player.Data.WallRunCooldownTimer = player.Config.WallRun.Cooldown;
-            player.ChangeState(player.AirborneState);
+            cooldownTimer = config.Cooldown;
+            movement.ChangeState(movement.AirborneState);
         }
 
-        private static bool IsConsumedSurface(PlayerMovementRuntimeData data, Vector3 normal, Vector3 point)
+        private bool IsConsumedSurface(Vector3 normal, Vector3 point)
         {
-            if (!data.HasConsumedWallRunSurface) return false;
-            bool sameFacing = Vector3.Dot(normal, data.LastWallRunNormal) > 0.97f;
-            float planeDistance = Mathf.Abs(Vector3.Dot(point - data.LastWallRunPoint, data.LastWallRunNormal));
+            if (!hasConsumedSurface) return false;
+            bool sameFacing = Vector3.Dot(normal, lastWallNormal) > 0.97f;
+            float planeDistance = Mathf.Abs(Vector3.Dot(point - lastWallPoint, lastWallNormal));
             return sameFacing && planeDistance < 0.4f;
         }
 
@@ -182,15 +179,14 @@ namespace Player.Movement
             Vector3 tangent = Vector3.Cross(Vector3.up, wallNormal).normalized;
             Vector3 look = Vector3.ProjectOnPlane(player.transform.forward, Vector3.up);
             float facing = Vector3.Dot(look, tangent);
-            if (Mathf.Abs(facing) < 0.1f) facing = Vector3.Dot(tangent, player.Data.Velocity);
+            if (Mathf.Abs(facing) < 0.1f) facing = Vector3.Dot(tangent, player.Velocity);
             return facing >= 0f ? tangent : -tangent;
         }
 
-        private static bool TryFindWall(PlayerMovement player, out Vector3 wallNormal, out RaycastHit wallHit)
+        private bool TryFindWall(PlayerMovement player, out Vector3 wallNormal, out RaycastHit wallHit)
         {
-            PlayerMovementConfig.WallRunSettings config = player.Config.WallRun;
-            Vector3 center = player.Controller.bounds.center;
-            float radius = Mathf.Max(0.05f, player.Controller.radius * 0.65f);
+            Vector3 center = player.Player.Controller.bounds.center;
+            float radius = Mathf.Max(0.05f, player.Player.Controller.radius * 0.65f);
             bool leftHit = Physics.SphereCast(center, radius, -player.transform.right, out RaycastHit left,
                 config.CheckDistance, config.Layers, QueryTriggerInteraction.Ignore) && IsRunnable(left.normal);
             bool rightHit = Physics.SphereCast(center, radius, player.transform.right, out RaycastHit right,

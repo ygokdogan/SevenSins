@@ -1,41 +1,33 @@
-using Core;
-
 namespace Player.Combat.States
 {
-    public class CombatSheatheState : IState<CombatContext>
+    public class CombatSheatheState : PlayerCombatState
     {
-        public void Enter(CombatContext ctx)
+        private bool animationFinished;
+
+        public override void Enter(PlayerCombat combat)
         {
-            ctx.IsAnimationFinished = false;
-            
-            if (ctx.IsSheathed) ctx.AnimationManager.PlayUnsheatheAnimation();
-            else ctx.AnimationManager.PlaySheatheAnimation();
+            animationFinished = false;
+            if (combat.IsSheathed) player.AnimationManager.PlayUnsheatheAnimation();
+            else player.AnimationManager.PlaySheatheAnimation();
         }
 
-        public void Tick(CombatContext ctx, float dt)
+        public override void Tick(PlayerCombat combat, float deltaTime)
         {
-            if (ctx.Input.PrimaryAttackInput)
+            if (player.Input.PrimaryAttackInput && config.DefaultLightAttack != null)
             {
-                ctx.CurrentAttack = ctx.DefaultLightAttack;
-
-                if (ctx.CurrentAttack != null)
-                {
-                    ctx.RequestTransition(ctx.States.Attack);
-                    return;
-                }
-            }
-
-            if (ctx.IsAnimationFinished)
-            {
-                ctx.RequestTransition(ctx.States.Idle);
+                combat.AttackState.Begin(combat, config.DefaultLightAttack);
                 return;
             }
+
+            if (animationFinished) combat.ChangeState(combat.IdleState);
         }
 
-        public void Exit(CombatContext ctx)
-        { 
-            ctx.IsSheathed = !ctx.IsSheathed;
-            ctx.IsAnimationFinished = true;
+        public override void Exit(PlayerCombat combat)
+        {
+            combat.IsSheathed = !combat.IsSheathed;
+            animationFinished = false;
         }
+
+        public override void OnAnimationFinished() => animationFinished = true;
     }
 }

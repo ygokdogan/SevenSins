@@ -3,37 +3,37 @@ using UnityEngine;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyHitState : IState<EnemyCombatContext>
+    public class EnemyHitState : IState<EnemyBase>
     {
         private float hitTimer;
         
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
-            ctx.Movement.Stop();
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
-            ctx.IsAnimationFinished = false;
-            ctx.IsAttackWindowOpen = false;
+            enemy.Movement.Stop();
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
+            enemy.IsAnimationFinished = false;
+            enemy.IsAttackWindowOpen = false;
             
-            ctx.CurrentHealth -= ctx.CurrentHit.damage;
+            enemy.CurrentHealth -= enemy.CurrentHit.damage;
             
-            ctx.HitFlash?.TriggerFlash();
-            ctx.HitJuice?.CalculateHitReaction(ctx.CurrentHit);
-            ctx.HitFx?.PlayHitSound(ctx.CurrentHit.impactMultiplier);
-            ctx.HitFx?.SpawnHitVfx(ctx.CurrentHit);
+            enemy.HitFlash?.TriggerFlash();
+            enemy.HitJuice?.CalculateHitReaction(enemy.CurrentHit);
+            enemy.HitFx?.PlayHitSound(enemy.CurrentHit.impactMultiplier);
+            enemy.HitFx?.SpawnHitVfx(enemy.CurrentHit);
 
-            hitTimer = 0.2f * Mathf.Max(0f, ctx.CurrentHit.impactMultiplier);
+            hitTimer = 0.2f * Mathf.Max(0f, enemy.CurrentHit.impactMultiplier);
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
             hitTimer -= dt;
             
-            if (hitTimer <= 0f) ctx.RequestTransition(ctx.States.Idle);
+            if (hitTimer <= 0f) enemy.RequestTransition(enemy.States.Idle);
         }
 
-        public void Exit(EnemyCombatContext ctx)
+        public void Exit(EnemyBase enemy)
         {
-            ctx.IsAnimationFinished = false;
+            enemy.IsAnimationFinished = false;
         }
     }
 }

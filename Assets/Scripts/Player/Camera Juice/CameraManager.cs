@@ -1,6 +1,4 @@
-using System;
-using Input;
-using Player.Movement;
+using UnityEngine.Serialization;
 using UnityEngine;
 
 namespace Player
@@ -13,31 +11,9 @@ namespace Player
         [SerializeField] private float sensitivity = 0.12f;
         [SerializeField] private float minPitch = -80f;
         [SerializeField] private float maxPitch = 80f;
-        [SerializeField, Range(0f, 180f)] private float wallRunYawLimit = 55f;
-        [SerializeField, Range(0f, 45f)] private float wallRunTowardWallYawLimit = 10f;
-        
-        [Header("FOV")]
-        [SerializeField] private float defaultFov = 60f;
-        [SerializeField] private float sprintFov = 80f;
-        [SerializeField] private float wallRunFov = 74f;
-        [SerializeField] private float grappleFov = 80f;
-        [SerializeField] private float dashFov = 88f;
-        [SerializeField, Min(0f)] private float dashFovInterpSpeed = 35f;
-        private float grappleLaunchFovTimer;
-        [SerializeField] private float fovInterpSpeed = 8f;
-        
-        [Header("Bob")]
-        [SerializeField] private Transform cameraBobPivot;
-        [SerializeField] private float defaultBobFrequency = 12f;
-        [SerializeField] private float defaultBobAmplitude = 0.08f;
-        [SerializeField] private float sprintBobFrequency = 16f;
-        [SerializeField] private float sprintBobAmplitude = 0.14f;
-        [SerializeField] private float wallRunBobFrequency = 17f;
-        [SerializeField] private float wallRunBobAmplitude = 0.065f;
-        [SerializeField] private float wallRunLateralAmplitude = 0.045f;
-        [SerializeField, Min(0f)] private float bobLateralAmplitude = 0.025f;
-        [SerializeField, Min(0f)] private float bobSpeed = 14f;
-        private Vector3 cameraBobDefaultPos;
+        [Header("Impact Pivot")]
+        [SerializeField] private Transform cameraImpactPivot;
+        private Vector3 cameraImpactDefaultPos;
 
         [Header("Landing Impact Shock")]
         [SerializeField, Min(0f)] private float minimumImpactSpeed = 4f;
@@ -49,28 +25,31 @@ namespace Player
         
         [Header("Tilt")]
         [SerializeField] private Transform cameraTiltPivot;
-        [SerializeField] private float maxTilt = 2f;
-        [SerializeField] private float wallRunTilt = 11f;
-        [SerializeField] private float tiltSpeed = 12f;
-        [SerializeField] private float wallRunTiltSpeed = 12f;
+
+        [Header("Movement Bob")]
+        [SerializeField] private Transform cameraBobPivot;
+        [SerializeField] private Vector2 cameraBobAmplitude = new(0.003f, 0.006f);
+        [SerializeField, Min(0f)] private float cameraBobFrequency = 12f;
+        [SerializeField, Min(0f)] private float cameraBobSmoothing = 12f;
+        private PlayerManager player;
+        private Vector3 cameraBobRestPosition;
+        private Vector3 previousPosition;
+        private Vector3 cameraBobOffset;
+        private float cameraBobPhase;
 
         private Camera cam;
-        private InputHandler input;
-        private PlayerMovement playerMovement;
-        
         private float currentPitch;
         private float currentTilt;
-        private float wallRunStartYaw;
-        private float wallRunLookOffset;
-        private float wallRunWallSide;
-        private bool wasWallRunning;
-        private float bobPhase;
-        private float bobWeight;
-        
+        private float targetFov;
+        private float fovSpeed;
+        private float targetTilt;
+        private float tiltSpeed;
+
+        public float Sensitivity => sensitivity;
+
         private float landingOffset;
         private float landingVelocity;
         
-        private Vector3 currentBobOffset;
         private float shakePitch;
         private float shakeRoll;
         private float shakeVelocity;
@@ -79,125 +58,93 @@ namespace Player
         private void Awake()
         {
             Cursor.lockState = CursorLockMode.Locked;
-            
             cam = Camera.main;
-            input = GetComponent<InputHandler>();
-            playerMovement = GetComponent<PlayerMovement>();
+            targetFov = cam.fieldOfView;
+            if (cameraImpactPivot != null) cameraImpactDefaultPos = cameraImpactPivot.localPosition;
+            player = GetComponent<PlayerManager>();
+            if (cameraBobPivot != null) cameraBobRestPosition = cameraBobPivot.localPosition;
+            previousPosition = transform.position;
         }
 
-        private void Start()
+        private void OnEnable() => previousPosition = transform.position;
+
+        private void OnDisable()
         {
-            cameraBobDefaultPos = cameraBobPivot.localPosition;
-            playerMovement.Landed += OnLanded;
-            playerMovement.GrappleLaunched += OnGrappleLaunched;
-            playerMovement.DashStarted += OnDashStarted;
+            if (cameraBobPivot != null) cameraBobPivot.localPosition = cameraBobRestPosition;
+            cameraBobOffset = Vector3.zero;
+            cameraBobPhase = 0f;
         }
 
-        private void OnDestroy()
+        private void LateUpdate()
         {
-            if (playerMovement != null)
-            {
-                playerMovement.Landed -= OnLanded;
-                playerMovement.GrappleLaunched -= OnGrappleLaunched;
-                playerMovement.DashStarted -= OnDashStarted;
-            }
+            float dt = Time.deltaTime;
+            currentTilt = Mathf.MoveTowards(currentTilt, targetTilt, tiltSpeed * dt);
+            cameraTiltPivot.localRotation = Quaternion.Euler(0f, 0f, currentTilt);
+            cam.fieldOfView = Mathf.MoveTowards(cam.fieldOfView, targetFov, fovSpeed * dt);
+            UpdateCameraImpact();
+            UpdateMovementBob(dt);
         }
 
-        private void Update()
+        private void UpdateMovementBob(float dt)
         {
-            CameraLook();
-            CameraTilt();
-            CameraBob();
-            UpdateFov();
+            Vector3 displacement = transform.position - previousPosition;
+            previousPosition = transform.position;
+            if (dt <= 0f || cameraBobPivot == null || player == null || player.Movement == null) return;
+
+            float speed = Vector3.ProjectOnPlane(displacement, Vector3.up).magnitude / dt;
+            float weight = player.Movement.IsGrounded
+                ? Mathf.Clamp01(speed / Mathf.Max(0.1f, player.Movement.CurrentMaxSpeed)) : 0f;
+            cameraBobPhase = (cameraBobPhase + cameraBobFrequency * weight * dt) % (Mathf.PI * 4f);
+            Vector3 target = new Vector3(
+                Mathf.Sin(cameraBobPhase * 0.5f) * cameraBobAmplitude.x,
+                Mathf.Sin(cameraBobPhase) * cameraBobAmplitude.y, 0f) * weight;
+            cameraBobOffset = Vector3.Lerp(cameraBobOffset, target, 1f - Mathf.Exp(-cameraBobSmoothing * dt));
+            cameraBobPivot.localPosition = cameraBobRestPosition + cameraBobOffset;
         }
 
-        private void CameraLook()
+        public void Look(Vector2 input)
         {
-            Vector2 look = input.LookInput * sensitivity;
-            // Pitch remains responsive while wall-running as well as during the approach.
-            currentPitch = Mathf.Clamp(currentPitch - look.y, minPitch, maxPitch);
-            cameraPitchPivot.localRotation = Quaternion.Euler(currentPitch, 0.0f, 0.0f);
-
-            if (playerMovement.IsWallRunning)
-            {
-                if (!wasWallRunning)
-                {
-                    Vector3 runDirection = playerMovement.WallRunDirection;
-                    wallRunStartYaw = playerMovement.IsGrappleWallRunning && runDirection.sqrMagnitude > 0.01f
-                        ? Quaternion.LookRotation(runDirection).eulerAngles.y : transform.eulerAngles.y;
-                    Vector3 referenceRight = Quaternion.Euler(0f, wallRunStartYaw, 0f) * Vector3.right;
-                    wallRunWallSide = Mathf.Sign(Vector3.Dot(-playerMovement.WallNormal, referenceRight));
-                    wallRunLookOffset = 0f;
-                    wasWallRunning = true;
-                }
-
-                float currentYawOffset = playerMovement.IsGrappleWallRunning
-                    ? wallRunLookOffset : Mathf.DeltaAngle(wallRunStartYaw, transform.eulerAngles.y);
-                float minYaw = wallRunWallSide < 0f ? -wallRunTowardWallYawLimit : -wallRunYawLimit;
-                float maxYaw = wallRunWallSide > 0f ? wallRunTowardWallYawLimit : wallRunYawLimit;
-                float clampedYawOffset = Mathf.Clamp(
-                    currentYawOffset + look.x,
-                    minYaw,
-                    maxYaw);
-                wallRunLookOffset = clampedYawOffset;
-                float targetYaw = wallRunStartYaw + clampedYawOffset;
-                float yaw = playerMovement.IsGrappleWallRunning
-                    ? Mathf.LerpAngle(transform.eulerAngles.y, targetYaw, 1f - Mathf.Exp(-12f * Time.deltaTime))
-                    : targetYaw;
-                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-                return;
-            }
-
-            wasWallRunning = false;
-            
+            Vector2 look = input * sensitivity;
+            LookPitch(look.y);
             transform.Rotate(Vector3.up * look.x);
-            
         }
 
-        private void CameraBob()
+        public void LookPitch(float degrees)
         {
+            currentPitch = Mathf.Clamp(currentPitch - degrees, minPitch, maxPitch);
+            cameraPitchPivot.localRotation = Quaternion.Euler(currentPitch, 0f, 0f);
+        }
+
+        public void SetYaw(float degrees) => transform.rotation = Quaternion.Euler(0f, degrees, 0f);
+
+        public void SetFov(float target, float speed)
+        {
+            targetFov = Mathf.Clamp(target, 1f, 179f);
+            fovSpeed = Mathf.Max(0f, speed);
+        }
+
+        public void TiltCamera(float target, float speed)
+        {
+            targetTilt = target;
+            tiltSpeed = Mathf.Max(0f, speed);
+        }
+
+        private void UpdateCameraImpact()
+        {
+            if (cameraImpactPivot == null) return;
             float dt = Time.deltaTime;
             float unscaledDt = Time.unscaledDeltaTime;
             UpdateHitShake(unscaledDt);
 
             if (dt > 0f)
             {
-                Vector3 planarVelocity = playerMovement.Velocity;
-                planarVelocity.y = 0f;
-                float currentSpeed = planarVelocity.magnitude;
-                float maxSpeed = Mathf.Max(0.11f, playerMovement.CurrentMaxSpeed);
-                bool isWallRunning = playerMovement.IsWallRunning;
-                float targetWeight = playerMovement.IsGrounded
-                    ? Mathf.InverseLerp(0.1f, maxSpeed, currentSpeed)
-                    : isWallRunning ? Mathf.InverseLerp(0.1f, maxSpeed, currentSpeed) : 0f;
-
-                float targetFrequency = isWallRunning
-                    ? wallRunBobFrequency
-                    : playerMovement.IsSprinting ? sprintBobFrequency : defaultBobFrequency;
-                float targetAmplitude = isWallRunning
-                    ? wallRunBobAmplitude
-                    : playerMovement.IsSprinting ? sprintBobAmplitude : defaultBobAmplitude;
-                float targetLateralAmplitude = isWallRunning ? wallRunLateralAmplitude : bobLateralAmplitude;
-                targetFrequency *= playerMovement.SpeedMultiplier;
-                targetAmplitude *= playerMovement.SpeedMultiplier;
-                
-                bobWeight = Mathf.MoveTowards(bobWeight, targetWeight, bobSpeed * dt);
-                bobPhase += targetFrequency * bobWeight * dt;
-
-                Vector3 targetOffset = new Vector3(
-                    Mathf.Cos(bobPhase * 0.5f) * targetLateralAmplitude * bobWeight,
-                    Mathf.Sin(bobPhase) * targetAmplitude * bobWeight,
-                    0f);
-                float smoothFactor = 1f - Mathf.Exp(-bobSpeed * dt);
-                currentBobOffset = Vector3.Lerp(currentBobOffset, targetOffset, smoothFactor);
-
                 UpdateLandingSpring(dt);
 
-                cameraBobPivot.localPosition = cameraBobDefaultPos + currentBobOffset + Vector3.up * landingOffset;
+                cameraImpactPivot.localPosition = cameraImpactDefaultPos + Vector3.up * landingOffset;
             }
 
             float pitchTilt = -landingOffset * landingPitchMultiplier;
-            cameraBobPivot.localRotation = Quaternion.Euler(pitchTilt + shakePitch, 0f, shakeRoll);
+            cameraImpactPivot.localRotation = Quaternion.Euler(pitchTilt + shakePitch, 0f, shakeRoll);
         }
 
         public void Shake(float strength, float duration)
@@ -224,7 +171,7 @@ namespace Player
             shakeVelocity = Mathf.MoveTowards(shakeVelocity, 0f, 550f * unscaledDt);
         }
 
-        private void OnLanded(float landingSpeed)
+        public void LandingImpact(float landingSpeed)
         {
             float impactStrength = Mathf.InverseLerp(
                 minimumImpactSpeed,
@@ -246,39 +193,5 @@ namespace Player
             landingOffset = Mathf.Clamp(landingOffset, -0.1f, 0.03f);
         }
 
-        private void CameraTilt()
-        {
-            float targetTilt = playerMovement.IsWallRunning
-                ? Vector3.Dot(playerMovement.WallNormal, transform.right) * -wallRunTilt
-                : -input.MoveInput.x * maxTilt;
-            float speed = playerMovement.IsWallRunning ? wallRunTiltSpeed : tiltSpeed;
-            currentTilt = Mathf.MoveTowards(currentTilt, targetTilt, speed * Time.deltaTime);
-            cameraTiltPivot.localRotation = Quaternion.Euler(0.0f, 0.0f, currentTilt);
-        }
-
-        private void OnGrappleLaunched()
-        {
-            grappleLaunchFovTimer = 0.45f;
-            Shake(0.22f, 0.09f);
-        }
-
-        private void OnDashStarted(Vector3 direction)
-        {
-            Shake(0.16f, 0.07f);
-        }
-
-        private void UpdateFov()
-        {
-            grappleLaunchFovTimer = Mathf.Max(0f, grappleLaunchFovTimer - Time.deltaTime);
-            float targetFov = playerMovement.IsDashing
-                ? dashFov
-                : playerMovement.IsGrappling || grappleLaunchFovTimer > 0f
-                ? grappleFov
-                : playerMovement.IsWallRunning
-                ? wallRunFov
-                : playerMovement.IsSprinting ? sprintFov : defaultFov;
-            float speed = playerMovement.IsDashing ? dashFovInterpSpeed : fovInterpSpeed;
-            cam.fieldOfView = Mathf.MoveTowards(cam.fieldOfView, targetFov, speed * Time.deltaTime);
-        }
     }
 }

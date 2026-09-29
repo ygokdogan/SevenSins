@@ -24,9 +24,9 @@ namespace Enemies.Combat
         public float LungeDistance => lungeDistance;
         public float LungeSpeed => lungeSpeed;
 
-        public override IState<EnemyCombatContext> CreateState() => new EnemyAttackState(this);
+        public override IState<EnemyBase> CreateState() => new EnemyAttackState(this);
 
-        public bool IsTargetInAttackBox(EnemyCombatContext ctx)
+        public bool IsTargetInAttackBox(EnemyBase ctx)
         {
             return hitCollider != null && ctx.TargetCollider != null &&
                 Physics.ComputePenetration(hitCollider, hitCollider.transform.position,
@@ -35,7 +35,7 @@ namespace Enemies.Combat
                     out _, out _);
         }
 
-        public float AttackBoxGap(EnemyCombatContext ctx)
+        public float AttackBoxGap(EnemyBase ctx)
         {
             if (hitCollider == null || ctx.TargetCollider == null) return float.PositiveInfinity;
             Vector3 targetPoint = ctx.TargetCollider.ClosestPoint(hitCollider.bounds.center);
@@ -43,7 +43,7 @@ namespace Enemies.Combat
             return Vector3.Distance(boxPoint, ctx.TargetCollider.ClosestPoint(boxPoint));
         }
 
-        public override bool CanStartAttack(EnemyCombatContext ctx)
+        public override bool CanStartAttack(EnemyBase ctx)
         {
             if (attackData == null || ctx.Target == null || hitCollider == null ||
                 ctx.TargetCollider == null) return false;
@@ -53,7 +53,7 @@ namespace Enemies.Combat
             return IsTargetInAttackBox(ctx) || AttackBoxGap(ctx) <= lungeDistance;
         }
 
-        public override float DesiredDistance(EnemyCombatContext ctx)
+        public override float DesiredDistance(EnemyBase ctx)
         {
             if (hitCollider == null || ctx.TargetCollider == null) return combatDistance;
             Transform boxTransform = hitCollider.transform;
@@ -69,10 +69,10 @@ namespace Enemies.Combat
             return Mathf.Min(combatDistance, Mathf.Max(0.5f, front + targetRadius - 0.2f));
         }
 
-        public override bool ShouldAttackImmediately(EnemyCombatContext ctx) =>
+        public override bool ShouldAttackImmediately(EnemyBase ctx) =>
             ctx.HorizontalDistance < attackRange * 0.8f;
 
-        protected override bool IsCrowded(EnemyCombatContext ctx) =>
+        protected override bool IsCrowded(EnemyBase ctx) =>
             ctx.HorizontalDistance < attackRange * 0.8f;
 
         private void OnValidate() => combatDistance = Mathf.Max(combatDistance, attackRange);

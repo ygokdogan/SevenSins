@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyDashRetreatState : IState<EnemyCombatContext>
+    public class EnemyDashRetreatState : IState<EnemyBase>
     {
         private readonly ArcherRangedAttackStyle style;
         private Vector3 destination;
@@ -13,30 +13,30 @@ namespace Enemies.Combat.States
 
         public void SetDestination(Vector3 safeDestination) => destination = safeDestination;
 
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
-            ctx.AnimationManager?.PlayAnimation("Idle");
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.Sprint);
-            remaining = Vector3.Distance(ctx.Transform.position, destination) /
+            enemy.AnimationManager?.PlayAnimation("Idle");
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.Sprint);
+            remaining = Vector3.Distance(enemy.Transform.position, destination) /
                 Mathf.Max(style.EscapeSpeed, 0.1f) + 0.65f;
-            if (!ctx.Movement.BeginDash(destination, style.EscapeSpeed))
+            if (!enemy.Movement.BeginDash(destination, style.EscapeSpeed))
                 remaining = 0f;
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (ctx.Target == null)
+            if (enemy.Target == null)
             {
-                ctx.RequestTransition(ctx.States.Idle);
+                enemy.RequestTransition(enemy.States.Idle);
                 return;
             }
 
             remaining -= dt;
-            ctx.Movement.FaceTarget(ctx.Target, dt);
-            if (remaining > 0f && !ctx.Movement.HasReached(destination, 0.25f)) return;
-            ctx.RequestTransition(ctx.States.Stalk);
+            enemy.Movement.FaceTarget(enemy.Target, dt);
+            if (remaining > 0f && !enemy.Movement.HasReached(destination, 0.25f)) return;
+            enemy.RequestTransition(enemy.States.Engage);
         }
 
-        public void Exit(EnemyCombatContext ctx) => ctx.Movement.EndDash();
+        public void Exit(EnemyBase enemy) => enemy.Movement.EndDash();
     }
 }

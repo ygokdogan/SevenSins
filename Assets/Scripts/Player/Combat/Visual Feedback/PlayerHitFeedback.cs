@@ -10,9 +10,7 @@ namespace Player.Combat
         [SerializeField, Min(0.05f)] private float fadeDuration = 0.55f;
 
         private Canvas canvas;
-        private Image vignette;
-        private Texture2D texture;
-        private Sprite sprite;
+        [SerializeField] private Image vignette;
         private float remaining;
 
         private void Awake()
@@ -21,6 +19,16 @@ namespace Player.Combat
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 100;
 
+            if (vignette != null) vignette.color = new Color(hitColor.r, hitColor.g, hitColor.b, 0f);
+        }
+
+#if UNITY_EDITOR
+        public void BakePersistentObjects()
+        {
+            if (vignette != null) return;
+            canvas = GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 100;
             var imageObject = new GameObject("Red Vignette", typeof(RectTransform), typeof(Image));
             imageObject.transform.SetParent(canvas.gameObject.transform, false);
             var rect = imageObject.GetComponent<RectTransform>();
@@ -29,7 +37,7 @@ namespace Player.Combat
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            texture = new Texture2D(128, 128, TextureFormat.RGBA32, false);
+            var texture = new Texture2D(128, 128, TextureFormat.RGBA32, false);
             texture.wrapMode = TextureWrapMode.Clamp;
             var pixels = new Color[128 * 128];
             for (int y = 0; y < 128; y++)
@@ -42,12 +50,24 @@ namespace Player.Combat
             }
             texture.SetPixels(pixels);
             texture.Apply();
-            sprite = Sprite.Create(texture, new Rect(0, 0, 128, 128), new Vector2(0.5f, 0.5f));
+            string path = "Assets/Generated/RuntimeSetup/HitVignette.png";
+            System.IO.File.WriteAllBytes(path, texture.EncodeToPNG());
+            DestroyImmediate(texture);
+            UnityEditor.AssetDatabase.ImportAsset(path);
+            var importer = (UnityEditor.TextureImporter)UnityEditor.AssetImporter.GetAtPath(path);
+            importer.textureType = UnityEditor.TextureImporterType.Sprite;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.SaveAndReimport();
+            var sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
             vignette = imageObject.GetComponent<Image>();
             vignette.sprite = sprite;
             vignette.raycastTarget = false;
             vignette.color = new Color(hitColor.r, hitColor.g, hitColor.b, 0f);
         }
+
+#endif
 
         public void Play()
         {
@@ -56,16 +76,11 @@ namespace Player.Combat
 
         private void Update()
         {
-            if (remaining <= 0f) return;
+            if (remaining <= 0f || vignette == null) return;
             remaining = Mathf.Max(0f, remaining - Time.unscaledDeltaTime);
             float opacity = peakOpacity * Mathf.Pow(remaining / fadeDuration, 1.5f);
             vignette.color = new Color(hitColor.r, hitColor.g, hitColor.b, opacity);
         }
 
-        private void OnDestroy()
-        {
-            if (sprite != null) Destroy(sprite);
-            if (texture != null) Destroy(texture);
-        }
     }
 }

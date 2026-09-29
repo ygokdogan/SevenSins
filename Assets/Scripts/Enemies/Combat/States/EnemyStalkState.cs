@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyStalkState : IState<EnemyCombatContext>
+    public class EnemyStalkState : IState<EnemyBase>
     {
         private float remaining;
         private float directionTimer;
@@ -13,53 +13,53 @@ namespace Enemies.Combat.States
         private float orbitRadius;
         private Vector3 orbitDirection;
 
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
             remaining = Random.Range(0.35f, 0.75f);
             orbitAngle = 0f;
             strafeDirection = Random.value < 0.5f ? -1 : 1;
             ChooseNextStep();
-            orbitRadius = ctx.HorizontalDistance;
-            orbitDirection = ctx.Transform.position - ctx.Target.position;
+            orbitRadius = enemy.HorizontalDistance;
+            orbitDirection = enemy.Transform.position - enemy.Target.position;
             orbitDirection.y = 0f;
             orbitDirection = orbitDirection.sqrMagnitude > 0.001f
-                ? orbitDirection.normalized : -ctx.Transform.forward;
-            ctx.AnimationManager?.PlayAnimation("Idle");
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.Walk);
+                ? orbitDirection.normalized : -enemy.Transform.forward;
+            enemy.AnimationManager?.PlayAnimation("Idle");
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.Walk);
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (ctx.Target == null) { ctx.RequestTransition(ctx.States.Idle); return; }
-            if (ctx.HorizontalDistance > ctx.AttackStyle.EngagementRange(ctx) * 1.2f)
+            if (enemy.Target == null) { enemy.RequestTransition(enemy.States.Idle); return; }
+            if (enemy.HorizontalDistance > enemy.EngagementRange * 1.2f)
             {
-                ctx.RequestTransition(ctx.States.Approach);
+                enemy.RequestTransition(enemy.States.Approach);
                 return;
             }
-            if (ctx.AttackStyle.TryStartEscape(ctx)) return;
+            if (enemy.AttackStyle.TryStartEscape(enemy)) return;
 
             remaining -= dt;
             directionTimer -= dt;
             if (directionTimer <= 0f) ChooseNextStep();
-            ctx.Movement.FaceTarget(ctx.Target, dt);
-            if (!ctx.AttackStyle.MoveWhileStalking(ctx, dt))
+            enemy.Movement.FaceTarget(enemy.Target, dt);
+            if (!enemy.AttackStyle.MoveWhileStalking(enemy, dt))
             {
-                orbitRadius = Mathf.MoveTowards(orbitRadius, ctx.AttackStyle.DesiredDistance(ctx),
-                    ctx.WalkSpeed * dt);
+                orbitRadius = Mathf.MoveTowards(orbitRadius, enemy.AttackStyle.DesiredDistance(enemy),
+                    enemy.WalkSpeed * dt);
                 orbitAngle += strafeDirection * angularSpeed * dt;
                 float leadAngle = strafeDirection * 20f;
                 Vector3 direction = Quaternion.Euler(0f, orbitAngle + leadAngle, 0f) * orbitDirection;
-                Vector3 destination = ctx.Target.position + direction * orbitRadius;
-                ctx.Movement.MoveToNearest(destination, 1f, ctx.WalkSpeed, 0.05f);
+                Vector3 destination = enemy.Target.position + direction * orbitRadius;
+                enemy.Movement.MoveToNearest(destination, 1f, enemy.WalkSpeed, 0.05f);
             }
-            if ((remaining <= 0f || ctx.AttackStyle.ShouldAttackImmediately(ctx)) &&
-                Time.time >= ctx.NextAttackTime && ctx.AttackStyle.CanStartAttack(ctx))
+            if ((remaining <= 0f || enemy.AttackStyle.ShouldAttackImmediately(enemy)) &&
+                Time.time >= enemy.NextAttackTime && enemy.AttackStyle.CanStartAttack(enemy))
             {
-                ctx.RequestTransition(ctx.States.Attack);
+                enemy.RequestTransition(enemy.States.Attack);
             }
         }
 
-        public void Exit(EnemyCombatContext ctx) => ctx.Movement.Stop();
+        public void Exit(EnemyBase enemy) => enemy.Movement.Stop();
 
         private void ChooseNextStep()
         {

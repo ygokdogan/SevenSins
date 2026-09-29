@@ -11,6 +11,7 @@ namespace Player.Movement
         public DashSettings Dash = new();
         public WallRunSettings WallRun = new();
         public GrappleSettings Grapple = new();
+        [Space]
         [Min(0.1f)] public float KnockbackDamping = 12f;
 
         [Serializable]

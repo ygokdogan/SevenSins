@@ -52,36 +52,9 @@ namespace Core
                 {
                     target.Blocks[i] = new MaterialPropertyBlock();
                     renderer.GetPropertyBlock(target.Blocks[i], i);
-                    Material source = flashMaterial != null ? flashMaterial : originals[i];
-                    if (source == null) continue;
-
-                    // Private copies keep the imported model and other enemies untouched.
-                    Material temporary = new Material(source);
+                    Material temporary = CreateFlashMaterial(originals[i]);
                     target.Temporary[i] = temporary;
-                    if (flashMaterial == null)
-                    {
-                        // Keep the albedo texture; brighten its existing tint instead of replacing it.
-                        TintColor(temporary, "_BaseColor");
-                        TintColor(temporary, "_Color");
-                        if (temporary.HasProperty("_EmissionColor"))
-                        {
-                            temporary.EnableKeyword("_EMISSION");
-                            Color tint = temporary.HasProperty("_BaseColor")
-                                ? temporary.GetColor("_BaseColor")
-                                : temporary.HasProperty("_Color") ? temporary.GetColor("_Color") : Color.white;
-                            temporary.SetColor("_EmissionColor", tint * emissionStrength);
-                            Texture albedo = temporary.HasProperty("_BaseMap") ? temporary.GetTexture("_BaseMap")
-                                : temporary.HasProperty("_MainTex") ? temporary.GetTexture("_MainTex") : null;
-                            // Emission follows the model's texture colors, avoiding a white silhouette.
-                            SetTexture(temporary, "_EmissionMap", albedo != null ? albedo : Texture2D.whiteTexture);
-                            string map = temporary.HasProperty("_BaseMap") ? "_BaseMap" : "_MainTex";
-                            if (temporary.HasProperty(map) && temporary.HasProperty("_EmissionMap"))
-                            {
-                                temporary.SetTextureScale("_EmissionMap", temporary.GetTextureScale(map));
-                                temporary.SetTextureOffset("_EmissionMap", temporary.GetTextureOffset(map));
-                            }
-                        }
-                    }
+                    if (temporary == null) continue;
 
                     // Per-slot values also override any renderer-wide color/texture block.
                     var block = new MaterialPropertyBlock();
@@ -96,6 +69,40 @@ namespace Core
                 renderer.sharedMaterials = target.Temporary;
                 targets.Add(target);
             }
+        }
+
+        private Material CreateFlashMaterial(Material original)
+        {
+            Material source = flashMaterial != null ? flashMaterial : original;
+            if (source == null) return null;
+
+            // Private copies keep the imported model and other enemies untouched.
+            Material temporary = new Material(source);
+            if (flashMaterial == null)
+            {
+                // Keep the albedo texture; brighten its existing tint instead of replacing it.
+                TintColor(temporary, "_BaseColor");
+                TintColor(temporary, "_Color");
+                if (temporary.HasProperty("_EmissionColor"))
+                {
+                    temporary.EnableKeyword("_EMISSION");
+                    Color tint = temporary.HasProperty("_BaseColor")
+                        ? temporary.GetColor("_BaseColor")
+                        : temporary.HasProperty("_Color") ? temporary.GetColor("_Color") : Color.white;
+                    temporary.SetColor("_EmissionColor", tint * emissionStrength);
+                    Texture albedo = temporary.HasProperty("_BaseMap") ? temporary.GetTexture("_BaseMap")
+                        : temporary.HasProperty("_MainTex") ? temporary.GetTexture("_MainTex") : null;
+                    // Emission follows the model's texture colors, avoiding a white silhouette.
+                    SetTexture(temporary, "_EmissionMap", albedo != null ? albedo : Texture2D.whiteTexture);
+                    string map = temporary.HasProperty("_BaseMap") ? "_BaseMap" : "_MainTex";
+                    if (temporary.HasProperty(map) && temporary.HasProperty("_EmissionMap"))
+                    {
+                        temporary.SetTextureScale("_EmissionMap", temporary.GetTextureScale(map));
+                        temporary.SetTextureOffset("_EmissionMap", temporary.GetTextureOffset(map));
+                    }
+                }
+            }
+            return temporary;
         }
 
         private void TintColor(Material material, string name)

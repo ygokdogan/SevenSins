@@ -1,41 +1,43 @@
-using Core;
+using Combat;
+using Player.Movement;
 using UnityEngine;
 
 namespace Player.Combat.States
 {
-    public class CombatHitState : IState<CombatContext>
+    public class CombatHitState : PlayerCombatState
     {
         private float remaining;
+        private HitInfo currentHit;
 
-        public void Enter(CombatContext ctx)
+        public void Begin(PlayerCombat combat, HitInfo hit)
         {
-            remaining = ctx.HitRecoveryDuration * Mathf.Max(0f, ctx.CurrentHit.impactMultiplier);
-            ctx.CurrentAttack = null;
-            ctx.IsAttackWindowOpen = false;
-            ctx.IsComboWindowOpen = false;
-            ctx.IsAnimationFinished = false;
-            ctx.Input.UsePrimaryAttackInput();
-            ctx.Input.UseSheatheInput();
-            ctx.Input.UseBlockInput();
-            ctx.Input.UseJumpInput();
-            ctx.Input.ConsumeJumpRelease();
-
-            ctx.Player.CanMove = false;
-            ctx.Player.CanSprint = false;
-            ctx.Player.StopPlanarMovement();
-            ctx.AnimationManager.PlayHitReaction(ctx.IsSheathed);
+            currentHit = hit;
+            combat.ForceChangeState(this);
         }
 
-        public void Tick(CombatContext ctx, float dt)
+        public override void Enter(PlayerCombat combat)
         {
-            remaining -= dt;
-            if (remaining <= 0f) ctx.RequestTransition(ctx.States.Idle);
+            remaining = config.HitRecoveryDuration * Mathf.Max(0f, currentHit.impactMultiplier);
+            player.Input.UsePrimaryAttackInput();
+            player.Input.UseSheatheInput();
+            player.Input.UseBlockInput();
+            player.Input.UseJumpInput();
+            player.Input.ConsumeJumpRelease();
+
+            player.Movement.Restrictions.Add(this, MovementRestriction.Move | MovementRestriction.Sprint);
+            player.Movement.StopPlanarMovement();
+            player.AnimationManager.PlayHitReaction(combat.IsSheathed);
         }
 
-        public void Exit(CombatContext ctx)
+        public override void Tick(PlayerCombat combat, float deltaTime)
         {
-            ctx.Player.CanMove = true;
-            ctx.Player.CanSprint = true;
+            remaining -= deltaTime;
+            if (remaining <= 0f) combat.ChangeState(combat.IdleState);
+        }
+
+        public override void Exit(PlayerCombat combat)
+        {
+            player.Movement.Restrictions.RemoveAll(this);
         }
     }
 }

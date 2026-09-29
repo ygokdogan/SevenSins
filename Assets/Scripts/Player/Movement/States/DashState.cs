@@ -1,70 +1,79 @@
 using UnityEngine;
 
-namespace Player.Movement
+namespace Player.Movement.States
 {
     public sealed class DashState : PlayerMovementState
     {
+        private PlayerMovementConfig.DashSettings config;
+
+        public override void Initialize(PlayerMovement movement)
+        {
+            config = movement.config.Dash;
+        }
+
         private float timeRemaining;
         private Vector3 direction;
         private bool startedGrounded;
         private float nextDashTime;
+        private bool airDashAvailable = true;
 
-        public bool TryStart(PlayerMovement player, bool airborne)
+        public void RestoreAirDash() => airDashAvailable = true;
+
+        public bool TryStart(PlayerMovement movement, bool airborne)
         {
-            if (!player.Input.DashInput) return false;
-            player.Input.UseDashInput();
-            if (!player.CanMove || Time.time < nextDashTime ||
-                (airborne && !player.Data.AirDashAvailable)) return false;
+            if (!movement.Player.Input.DashInput) return false;
+            movement.Player.Input.UseDashInput();
+            if (!movement.CanMove || Time.time < nextDashTime ||
+                (airborne && !airDashAvailable)) return false;
 
-            if (airborne) player.Data.AirDashAvailable = false;
-            player.ChangeState(this);
+            if (airborne) airDashAvailable = false;
+            movement.ChangeState(this);
             return true;
         }
 
-        public override void Enter(PlayerMovement player)
+        public override void Enter(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.DashSettings config = player.Config.Dash;
             timeRemaining = config.Duration;
             nextDashTime = Time.time + config.Cooldown;
-            startedGrounded = player.Controller.isGrounded;
+            startedGrounded = movement.Player.Controller.isGrounded;
 
-            Vector2 input = Vector2.ClampMagnitude(player.Input.MoveInput, 1f);
-            direction = player.transform.right * input.x + player.transform.forward * input.y;
+            Vector2 input = Vector2.ClampMagnitude(movement.Player.Input.MoveInput, 1f);
+            direction = movement.transform.right * input.x + movement.transform.forward * input.y;
             direction.y = 0f;
             if (direction.sqrMagnitude < 0.001f)
             {
-                direction = player.transform.forward;
+                direction = movement.transform.forward;
                 direction.y = 0f;
             }
 
             direction.Normalize();
-            data.Velocity = direction * config.Speed;
-            data.VerticalVelocity = startedGrounded ? -2f : 0f;
-            data.PreserveAirMomentum = false;
-            player.NotifyDashStarted(direction);
+            movement.Velocity = direction * config.Speed;
+            movement.VerticalVelocity = startedGrounded ? -2f : 0f;
+            movement.AirborneState.SetMomentumPreservation(false);
+            movement.NotifyDashStarted(direction);
+            movement.Player.Camera?.Shake(0.16f, 0.07f);
         }
 
-        public override void Tick(PlayerMovement player, float dt)
+        public override void Tick(PlayerMovement movement, float dt)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            if (!data.CanMove)
+            if (!movement.CanMove)
             {
-                player.ResumeLocomotion();
+                movement.ResumeLocomotion();
                 return;
             }
 
             timeRemaining -= dt;
-            data.Velocity = direction * player.Config.Dash.Speed;
-            data.VerticalVelocity = startedGrounded ? -2f : 0f;
-            CollisionFlags collisions = player.Controller.Move(
-                new Vector3(data.Velocity.x, data.VerticalVelocity, data.Velocity.z) * dt);
+            movement.Velocity = direction * config.Speed;
+            movement.VerticalVelocity = startedGrounded ? -2f : 0f;
+            CollisionFlags collisions = movement.Player.Controller.Move(
+                new Vector3(movement.Velocity.x, movement.VerticalVelocity, movement.Velocity.z) * dt);
 
             if (timeRemaining <= 0f || (collisions & CollisionFlags.Sides) != 0)
-                player.ResumeLocomotion();
+                movement.ResumeLocomotion();
         }
 
-        public override void Exit(PlayerMovement player) => player.NotifyDashEnded();
+        public override void Exit(PlayerMovement movement) => movement.NotifyDashEnded();
+
 
     }
 }

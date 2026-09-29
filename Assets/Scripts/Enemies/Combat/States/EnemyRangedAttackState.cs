@@ -2,7 +2,7 @@ using Core;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyRangedAttackState : IState<EnemyCombatContext>
+    public class EnemyRangedAttackState : IState<EnemyBase>
     {
         private readonly ArcherRangedAttackStyle style;
         private float remaining;
@@ -11,44 +11,44 @@ namespace Enemies.Combat.States
 
         public EnemyRangedAttackState(ArcherRangedAttackStyle style) => this.style = style;
 
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
-            ctx.Movement.Stop();
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
+            enemy.Movement.Stop();
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
             attack = style.SelectAttack();
             remaining = attack != null ? attack.telegraphDuration : 0f;
             fired = false;
             if (attack != null && !string.IsNullOrEmpty(attack.telegraphAnimation))
-                ctx.AnimationManager?.PlayAnimation(attack.telegraphAnimation);
+                enemy.AnimationManager?.PlayAnimation(attack.telegraphAnimation);
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (ctx.Target == null)
+            if (enemy.Target == null)
             {
-                ctx.RequestTransition(ctx.States.Idle);
+                enemy.RequestTransition(enemy.States.Idle);
                 return;
             }
-            if (style.TryStartEscape(ctx)) return;
-            ctx.Movement.FaceTarget(ctx.Target, dt);
-            style.MaintainPreferredRange(ctx);
+            if (style.TryStartEscape(enemy)) return;
+            enemy.Movement.FaceTarget(enemy.Target, dt);
+            style.MaintainPreferredRange(enemy);
             remaining -= dt;
             if (remaining > 0f) return;
 
             if (!fired)
             {
                 fired = true;
-                style.Fire(ctx, attack);
+                style.Fire(enemy, attack);
                 if (attack != null && !string.IsNullOrEmpty(attack.animationName))
-                    ctx.AnimationManager?.PlayAnimation(attack.animationName,
+                    enemy.AnimationManager?.PlayAnimation(attack.animationName,
                         attack.crossFadeDuration);
                 remaining = attack != null ? attack.recoveryDuration : 0f;
                 return;
             }
 
-            style.FinishAttack(ctx);
+            style.FinishAttack(enemy);
         }
 
-        public void Exit(EnemyCombatContext ctx) => ctx.Movement.Stop();
+        public void Exit(EnemyBase enemy) => enemy.Movement.Stop();
     }
 }

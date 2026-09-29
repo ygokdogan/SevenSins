@@ -33,20 +33,20 @@ namespace Enemies.Combat
 
         public float EscapeSpeed => escapeSpeed;
 
-        public override IState<EnemyCombatContext> CreateState() => new EnemyRangedAttackState(this);
-        public override IState<EnemyCombatContext> CreateEscapeState() =>
+        public override IState<EnemyBase> CreateState() => new EnemyRangedAttackState(this);
+        public override IState<EnemyBase> CreateEscapeState() =>
             escapeState = new EnemyDashRetreatState(this);
-        public override float DesiredDistance(EnemyCombatContext ctx) => preferredRange;
-        public override float EngagementRange(EnemyCombatContext ctx) =>
+        public override float DesiredDistance(EnemyBase ctx) => preferredRange;
+        public override float EngagementRange(EnemyBase ctx) =>
             Mathf.Max(ctx.StalkRange, preferredRange + rangeTolerance);
 
-        public override bool MoveWhileStalking(EnemyCombatContext ctx, float dt)
+        public override bool MoveWhileStalking(EnemyBase ctx, float dt)
         {
             MaintainPreferredRange(ctx);
             return true;
         }
 
-        public override bool TryStartEscape(EnemyCombatContext ctx)
+        public override bool TryStartEscape(EnemyBase ctx)
         {
             if (escapeState == null || ctx.Target == null ||
                 ctx.HorizontalDistance > escapeTriggerRange ||
@@ -63,7 +63,7 @@ namespace Enemies.Combat
             return true;
         }
 
-        public void MaintainPreferredRange(EnemyCombatContext ctx)
+        public void MaintainPreferredRange(EnemyBase ctx)
         {
             if (ctx.Target == null) return;
             Vector3 away = ctx.Transform.position - ctx.Target.position;
@@ -95,7 +95,7 @@ namespace Enemies.Combat
             return attackData as RangedAttackData;
         }
 
-        public override bool CanStartAttack(EnemyCombatContext ctx)
+        public override bool CanStartAttack(EnemyBase ctx)
         {
             if (SelectAttack() == null || muzzle == null ||
                 ctx.TargetCollider == null) return false;
@@ -121,16 +121,16 @@ namespace Enemies.Combat
             return closest == null || closest.transform.IsChildOf(ctx.Target);
         }
 
-        public override void FinishAttack(EnemyCombatContext ctx)
+        public override void FinishAttack(EnemyBase ctx)
         {
             ScheduleNextAttack(ctx);
-            ctx.RequestTransition(ctx.States.Stalk);
+            ctx.RequestTransition(ctx.States.Engage);
         }
 
-        protected override bool IsCrowded(EnemyCombatContext ctx) =>
+        protected override bool IsCrowded(EnemyBase ctx) =>
             ctx.HorizontalDistance < minimumRange;
 
-        public void Fire(EnemyCombatContext ctx, RangedAttackData attack)
+        public void Fire(EnemyBase ctx, RangedAttackData attack)
         {
             if (muzzle == null || attack == null || attack.projectilePrefab == null || ctx.TargetCollider == null) return;
             Vector3 targetPoint = ctx.TargetCollider.bounds.center;

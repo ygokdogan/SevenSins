@@ -1,53 +1,32 @@
-using Core;
-
 namespace Player.Combat.States
 {
-    public class CombatIdleState : IState<CombatContext>
+    public class CombatIdleState : PlayerCombatState
     {
-        public void Enter(CombatContext ctx)
-        {
-            ctx.CurrentAttack = null;
-            ctx.IsComboWindowOpen = false;
-            ctx.IsAnimationFinished = false;
-        }
+        public override void Enter(PlayerCombat combat) { }
 
-        public void Tick(CombatContext ctx, float dt)
+        public override void Tick(PlayerCombat combat, float deltaTime)
         {
-            if (ctx.Input.SheatheInput)
+            if (player.Input.SheatheInput)
             {
-                ctx.Input.UseSheatheInput();
-                ctx.RequestTransition(ctx.States.Sheathe);
+                player.Input.UseSheatheInput();
+                combat.ChangeState(combat.SheatheState);
                 return;
             }
 
-            if (ctx.Input.BlockInput || ctx.Input.IsBlockHeld)
+            if (player.Input.BlockInput || player.Input.IsBlockHeld)
             {
-                ctx.RequestTransition(ctx.States.Block);
+                combat.ChangeState(combat.BlockState);
                 return;
             }
 
-            if (ctx.Input.PrimaryAttackInput)
+            if (player.Input.PrimaryAttackInput)
             {
-                if (ctx.IsSheathed)
-                {
-                    ctx.CurrentAttack = ctx.SheathedAttack != null ? ctx.SheathedAttack : ctx.DefaultLightAttack;
-                    ctx.IsSheathed = false;
-                }
-                else
-                {
-                    ctx.CurrentAttack = ctx.DefaultLightAttack;
-                }
-
-                if (ctx.CurrentAttack != null)
-                {
-                    ctx.RequestTransition(ctx.States.Attack);
-                    return;
-                }
+                var attack = combat.IsSheathed && config.SheathedAttack != null
+                    ? config.SheathedAttack : config.DefaultLightAttack;
+                combat.AttackState.Begin(combat, attack);
             }
         }
 
-        public void Exit(CombatContext ctx)
-        {
-        }
+        public override void Exit(PlayerCombat combat) { }
     }
 }

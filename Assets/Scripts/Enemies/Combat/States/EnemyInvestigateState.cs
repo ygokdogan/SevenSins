@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyInvestigateState : IState<EnemyCombatContext>
+    public class EnemyInvestigateState : IState<EnemyBase>
     {
         private bool moving;
         private float travelRemaining;
@@ -12,45 +12,44 @@ namespace Enemies.Combat.States
         private int lookDirection;
         private Quaternion arrivalRotation;
 
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
-            if (!ctx.HasLastSeenPosition)
+            if (!enemy.HasLastSeenPosition)
             {
-                ctx.RequestTransition(ctx.States.Idle);
+                enemy.RequestTransition(enemy.States.Idle);
                 return;
             }
 
-            ctx.AnimationManager?.PlayAnimation("Idle");
-            moving = ctx.Movement.MoveToNearest(ctx.LastSeenPosition, 1.5f,
-                ctx.SprintSpeed, 0.2f);
-            ctx.Locomotion.PlayLocomotionAnimation(moving
+            enemy.AnimationManager?.PlayAnimation("Idle");
+            moving = enemy.Movement.MoveToNearest(enemy.LastSeenPosition, 1.5f,
+                enemy.SprintSpeed, 0.2f);
+            enemy.Locomotion.PlayLocomotionAnimation(moving
                 ? EnemyLocomotionAnimation.Mode.Sprint : EnemyLocomotionAnimation.Mode.None);
-            travelRemaining = Vector3.Distance(ctx.Transform.position, ctx.LastSeenPosition) /
-                Mathf.Max(ctx.SprintSpeed, 0.1f) + 3f;
-            searchRemaining = ctx.Config.searchDuration;
+            travelRemaining = Vector3.Distance(enemy.Transform.position, enemy.LastSeenPosition) /
+                Mathf.Max(enemy.SprintSpeed, 0.1f) + 3f;
+            searchRemaining = enemy.Config.searchDuration;
             lookTimer = 0f;
             lookDirection = 1;
-            arrivalRotation = ctx.Transform.rotation;
+            arrivalRotation = enemy.Transform.rotation;
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (ctx.Target != null)
+            if (enemy.Target != null)
             {
-                ctx.RequestTransition(ctx.HorizontalDistance > ctx.AttackStyle.EngagementRange(ctx)
-                    ? ctx.States.Approach : ctx.States.Stalk);
+                enemy.TransitionToCombat();
                 return;
             }
 
             if (moving)
             {
                 travelRemaining -= dt;
-                ctx.Movement.FaceMovementDirection(dt);
-                if (!ctx.Movement.HasReachedDestination(0.45f) && travelRemaining > 0f) return;
-                ctx.Movement.Stop();
-                ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
+                enemy.Movement.FaceMovementDirection(dt);
+                if (!enemy.Movement.HasReachedDestination(0.45f) && travelRemaining > 0f) return;
+                enemy.Movement.Stop();
+                enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
                 moving = false;
-                arrivalRotation = ctx.Transform.rotation;
+                arrivalRotation = enemy.Transform.rotation;
             }
 
             searchRemaining -= dt;
@@ -61,13 +60,13 @@ namespace Enemies.Combat.States
                 lookTimer = 0.65f;
             }
             Quaternion look = arrivalRotation * Quaternion.Euler(0f, lookDirection * 70f, 0f);
-            ctx.Transform.rotation = Quaternion.RotateTowards(ctx.Transform.rotation, look, 180f * dt);
+            enemy.Transform.rotation = Quaternion.RotateTowards(enemy.Transform.rotation, look, 180f * dt);
 
             if (searchRemaining > 0f) return;
-            ctx.HasLastSeenPosition = false;
-            ctx.RequestTransition(ctx.States.Idle);
+            enemy.HasLastSeenPosition = false;
+            enemy.RequestTransition(enemy.States.Idle);
         }
 
-        public void Exit(EnemyCombatContext ctx) => ctx.Movement.Stop();
+        public void Exit(EnemyBase enemy) => enemy.Movement.Stop();
     }
 }

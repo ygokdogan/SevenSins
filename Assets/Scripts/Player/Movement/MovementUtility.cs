@@ -4,18 +4,17 @@ namespace Player.Movement
 {
     public static class MovementUtility
     {
-        public static void UpdatePlanarVelocity(PlayerMovement player, float dt, float controlMultiplier)
+        public static void UpdatePlanarVelocity(PlayerMovement movement, float dt, float controlMultiplier)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.GroundSettings config = player.Config.Ground;
-            if (!data.CanMove) return;
+            PlayerMovementConfig.GroundSettings config = movement.config.Ground;
+            if (!movement.CanMove) return;
 
-            Vector2 input = Vector2.ClampMagnitude(player.Input.MoveInput, 1f);
-            float targetSpeed = (player.IsSprinting ? config.SprintSpeed : config.WalkSpeed) * data.SpeedMultiplier;
-            Vector3 targetVelocity = (player.transform.right * input.x + player.transform.forward * input.y) * targetSpeed;
+            Vector2 input = Vector2.ClampMagnitude(movement.Player.Input.MoveInput, 1f);
+            float targetSpeed = (movement.IsSprinting ? config.SprintSpeed : config.WalkSpeed) * movement.SpeedMultiplier;
+            Vector3 targetVelocity = (movement.transform.right * input.x + movement.transform.forward * input.y) * targetSpeed;
             targetVelocity.y = 0f;
 
-            Vector3 currentVelocity = Vector3.ProjectOnPlane(data.Velocity, Vector3.up);
+            Vector3 currentVelocity = Vector3.ProjectOnPlane(movement.Velocity, Vector3.up);
             bool changingDirection = input.sqrMagnitude > 0.001f &&
                                      currentVelocity.sqrMagnitude > 0.001f &&
                                      Vector3.Dot(currentVelocity.normalized, targetVelocity.normalized) < 0f;
@@ -23,15 +22,14 @@ namespace Player.Movement
                 ? config.TurnAcceleration
                 : input.sqrMagnitude > 0.001f ? config.Acceleration : config.Deceleration;
 
-            data.Velocity = Vector3.MoveTowards(currentVelocity, targetVelocity, rate * controlMultiplier * dt);
+            movement.Velocity = Vector3.MoveTowards(currentVelocity, targetVelocity, rate * controlMultiplier * dt);
         }
 
-        public static void StartJump(PlayerMovement player)
+        public static void StartJump(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.JumpSettings config = player.Config.Jump;
-            data.VerticalVelocity = Mathf.Sqrt(config.Height * 2f * config.Gravity);
-            data.CoyoteTimer = 0f;
+            PlayerMovementConfig.JumpSettings config = movement.config.Jump;
+            movement.VerticalVelocity = Mathf.Sqrt(config.Height * 2f * config.Gravity);
+            movement.AirborneState.ConsumeCoyoteTime();
         }
     }
 }

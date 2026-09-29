@@ -1,19 +1,18 @@
-using Enemies.Combat.States;
 using Core;
 
 namespace Enemies.Combat
 {
     public class EnemyCombatStates
     {
-        public EnemyIdleState Idle;
-        public EnemyPatrolState Patrol;
-        public EnemyInvestigateState Investigate;
-        public EnemyApproachState Approach;
-        public EnemyStalkState Stalk;
-        public IState<EnemyCombatContext> Attack;
-        public IState<EnemyCombatContext> Escape;
-        public EnemyRetreatState Retreat;
-        public EnemyHitState Hit;
-        public EnemyStunState Stun;
+        public IState<EnemyBase> Idle;
+        public IState<EnemyBase> Patrol;
+        public IState<EnemyBase> Investigate;
+        public IState<EnemyBase> Approach;
+        public IState<EnemyBase> Engage;
+        public IState<EnemyBase> Attack;
+        public IState<EnemyBase> Escape;
+        public IState<EnemyBase> Retreat;
+        public IState<EnemyBase> Hit;
+        public IState<EnemyBase> Stun;
     }
 }

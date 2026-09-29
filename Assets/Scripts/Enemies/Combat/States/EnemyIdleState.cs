@@ -2,35 +2,34 @@ using Core;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyIdleState : IState<EnemyCombatContext>
+    public class EnemyIdleState : IState<EnemyBase>
     {
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
-            ctx.Movement.Stop();
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
-            ctx.IsAnimationFinished = false;
-            ctx.AnimationManager?.PlayAnimation("Idle");
+            enemy.Movement.Stop();
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
+            enemy.IsAnimationFinished = false;
+            enemy.AnimationManager?.PlayAnimation("Idle");
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (!ctx.Movement.IsOnNavMesh) return;
-            if (ctx.Target == null)
+            if (!enemy.Movement.IsOnNavMesh) return;
+            if (enemy.Target == null)
             {
-                if (ctx.HasLastSeenPosition)
+                if (enemy.HasLastSeenPosition)
                 {
-                    ctx.RequestTransition(ctx.States.Investigate);
+                    enemy.RequestTransition(enemy.States.Investigate);
                     return;
                 }
-                if (ctx.PatrolPoints != null && ctx.PatrolPoints.Length > 0)
-                    ctx.RequestTransition(ctx.States.Patrol);
+                if (enemy.PatrolPoints != null && enemy.PatrolPoints.Length > 0)
+                    enemy.RequestTransition(enemy.States.Patrol);
                 return;
             }
-            ctx.RequestTransition(ctx.HorizontalDistance > ctx.AttackStyle.EngagementRange(ctx)
-                ? ctx.States.Approach : ctx.States.Stalk);
+            enemy.TransitionToCombat();
         }
 
-        public void Exit(EnemyCombatContext ctx)
+        public void Exit(EnemyBase enemy)
         {
         }
     }

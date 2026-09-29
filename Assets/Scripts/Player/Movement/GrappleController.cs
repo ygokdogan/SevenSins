@@ -1,4 +1,5 @@
 using Input;
+using Enemies.Combat;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -16,7 +17,6 @@ namespace Player.Movement
         [Header("Grapple Target")]
         [SerializeField, Min(1f)] private float maxDistance = 25f;
         [SerializeField] private LayerMask grappleLayers = ~0;
-        [SerializeField] private bool requireGrappleAnchor;
         [SerializeField, Min(0f)] private float predictionSphereCastRadius = 0.6f;
 
         [Header("Rope")]
@@ -27,18 +27,20 @@ namespace Player.Movement
 
         private PlayerMovement movement;
         private InputHandler input;
-        private LineRenderer rope;
-        private Material ropeMaterial;
+        [SerializeField] private LineRenderer rope;
         private Transform anchorTransform;
         private Vector3 localAnchor;
         private Vector3 currentRopeEnd;
-        private bool ownsPredictionPoint;
+
+        public Camera AimCamera => aimCamera;
 
         public bool IsGrappling => movement != null && movement.IsGrappling;
         public int AnchorLayerMask => anchorTransform != null ? 1 << anchorTransform.gameObject.layer : 0;
         public Vector3 AnchorPoint => TryGetAnchor(out Vector3 point) ? point : Vector3.zero;
         public bool HasPrediction { get; private set; }
         public Vector3 PredictionPosition { get; private set; }
+        public Transform PredictionTarget { get; private set; }
+        public EnemyBase PredictionEnemy { get; private set; }
 
         private void Awake()
         {
@@ -46,35 +48,15 @@ namespace Player.Movement
             input = GetComponent<InputHandler>();
             if (aimCamera == null) aimCamera = Camera.main;
 
-            var ropeObject = new GameObject("Swing Rope");
-            ropeObject.transform.SetParent(transform, false);
-            rope = ropeObject.AddComponent<LineRenderer>();
-            rope.useWorldSpace = true;
-            rope.positionCount = 2;
-            rope.widthMultiplier = ropeWidth;
-            rope.numCapVertices = 4;
-            rope.shadowCastingMode = ShadowCastingMode.Off;
-            rope.receiveShadows = false;
-            ropeMaterial = new Material(Shader.Find("Sprites/Default"));
-            rope.sharedMaterial = ropeMaterial;
-            rope.startColor = rope.endColor = ropeColor;
+            if (rope == null)
+            {
+                Debug.LogError("Grapple rope is not assigned. Run Tools/Western Samurai/Bake Persistent Objects.", this);
+                enabled = false;
+                return;
+            }
             rope.enabled = false;
 
-            if (predictionPoint == null)
-            {
-                GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                marker.name = "Swing Target Preview";
-                marker.layer = 2; // Ignore Raycast
-                Collider markerCollider = marker.GetComponent<Collider>();
-                markerCollider.enabled = false;
-                Destroy(markerCollider);
-                marker.transform.SetParent(transform, false);
-                marker.transform.localScale = Vector3.one * 0.12f;
-                marker.GetComponent<Renderer>().sharedMaterial = ropeMaterial;
-                predictionPoint = marker.transform;
-                ownsPredictionPoint = true;
-            }
-            predictionPoint.gameObject.SetActive(false);
+            if (predictionPoint != null) predictionPoint.gameObject.SetActive(false);
         }
 
         // PlayerMovement invokes this before ticking its state, independent of Update order.
@@ -110,7 +92,9 @@ namespace Player.Movement
             rope.SetPosition(0, currentRopeEnd);
             rope.SetPosition(1, currentRopeEnd);
             HasPrediction = false;
-            predictionPoint.gameObject.SetActive(false);
+            PredictionTarget = null;
+            PredictionEnemy = null;
+            if (predictionPoint != null) predictionPoint.gameObject.SetActive(false);
             return true;
         }
 
@@ -132,10 +116,13 @@ namespace Player.Movement
             }
 
             rope.enabled = false;
-            HasPrediction = TryFindTarget(out _, out Vector3 predicted);
+            HasPrediction = TryFindTarget(out RaycastHit predictedHit, out Vector3 predicted);
+            PredictionEnemy = HasPrediction ? predictedHit.collider.GetComponentInParent<EnemyBase>() : null;
+            GrappleAnchor marker = HasPrediction ? predictedHit.collider.GetComponentInParent<GrappleAnchor>() : null;
+            PredictionTarget = PredictionEnemy != null ? PredictionEnemy.transform :
+                marker != null ? marker.transform : null;
             PredictionPosition = predicted;
-            predictionPoint.gameObject.SetActive(HasPrediction);
-            if (HasPrediction) predictionPoint.position = predicted;
+
         }
 
         private bool TryFindTarget(out RaycastHit hit, out Vector3 point)
@@ -162,7 +149,8 @@ namespace Player.Movement
                 if (hit.collider == null || hit.collider.transform.IsChildOf(transform)) continue;
                 if (hit.distance >= nearest) continue;
                 GrappleAnchor marker = hit.collider.GetComponentInParent<GrappleAnchor>();
-                if ((requireGrappleAnchor || hit.collider.isTrigger) && marker == null) continue;
+                EnemyBase enemy = hit.collider.GetComponentInParent<EnemyBase>();
+                if (marker == null && (enemy == null || !enemy.isActiveAndEnabled || hit.collider.isTrigger)) continue;
                 Vector3 candidate = marker != null ? marker.GetAttachmentPoint(hit.point) : hit.point;
                 Vector3 delta = candidate - aimCamera.transform.position;
                 float distance = delta.magnitude;
@@ -180,7 +168,11 @@ namespace Player.Movement
             foreach (RaycastHit obstacle in Physics.RaycastAll(aimCamera.transform.position,
                 delta.normalized, delta.magnitude, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
             {
-                if (obstacle.collider == target || obstacle.transform.IsChildOf(transform)) continue;
+                EnemyBase enemy = target.GetComponentInParent<EnemyBase>();
+                GrappleAnchor marker = target.GetComponentInParent<GrappleAnchor>();
+                if (obstacle.collider == target || obstacle.transform.IsChildOf(transform) ||
+                    (enemy != null && obstacle.transform.IsChildOf(enemy.transform)) ||
+                    (marker != null && obstacle.transform.IsChildOf(marker.transform))) continue;
                 if (obstacle.distance < delta.magnitude - 0.05f) return false;
             }
             return true;
@@ -211,14 +203,36 @@ namespace Player.Movement
         {
             ReleaseGrapple();
             HasPrediction = false;
+            PredictionTarget = null;
+            PredictionEnemy = null;
             if (predictionPoint != null) predictionPoint.gameObject.SetActive(false);
         }
 
-        private void OnDestroy()
+#if UNITY_EDITOR
+        public void BakePersistentObjects()
         {
-            if (rope != null) Destroy(rope.gameObject);
-            if (ropeMaterial != null) Destroy(ropeMaterial);
-            if (ownsPredictionPoint && predictionPoint != null) Destroy(predictionPoint.gameObject);
+            if (rope != null) return;
+            var ropeObject = new GameObject("Swing Rope");
+            ropeObject.transform.SetParent(transform, false);
+            rope = ropeObject.AddComponent<LineRenderer>();
+            rope.useWorldSpace = true;
+            rope.positionCount = 2;
+            rope.widthMultiplier = ropeWidth;
+            rope.numCapVertices = 4;
+            rope.shadowCastingMode = ShadowCastingMode.Off;
+            rope.receiveShadows = false;
+            string path = "Assets/Generated/RuntimeSetup/GrappleRope.mat";
+            Material ropeMaterial = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (ropeMaterial == null)
+            {
+                ropeMaterial = new Material(Shader.Find("Sprites/Default"));
+                UnityEditor.AssetDatabase.CreateAsset(ropeMaterial, path);
+            }
+            rope.sharedMaterial = ropeMaterial;
+            rope.startColor = rope.endColor = ropeColor;
+            rope.enabled = false;
+
         }
+#endif
     }
 }

@@ -1,9 +1,11 @@
+using UnityEngine;
+
 namespace Core
 {
-    public interface IState<TContext>
+    public interface IState<T> 
     {
-        void Enter(TContext ctx);
-        void Tick(TContext ctx, float dt);
-        void Exit(TContext ctx);
+        void Enter(T ctx);
+        void Tick(T ctx, float dt);
+        void Exit(T ctx);
     }
 }

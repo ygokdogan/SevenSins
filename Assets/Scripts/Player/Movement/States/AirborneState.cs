@@ -1,76 +1,89 @@
 using UnityEngine;
 
-namespace Player.Movement
+namespace Player.Movement.States
 {
     public sealed class AirborneState : PlayerMovementState
     {
-        public override void Enter(PlayerMovement player) { }
+        private PlayerMovementConfig.GroundSettings groundConfig;
+        private PlayerMovementConfig.JumpSettings jumpConfig;
 
-        public override void Tick(PlayerMovement player, float dt)
+        public override void Initialize(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig config = player.Config;
-
-            if (player.DashState.TryStart(player, airborne: true)) return;
-
-            data.WallRunCooldownTimer = Mathf.Max(0f, data.WallRunCooldownTimer - dt);
-            if (data.PreserveAirMomentum)
-                UpdateMomentumAirControl(player, dt);
-            else
-                MovementUtility.UpdatePlanarVelocity(player, dt, config.Ground.AirControl);
-
-            data.CoyoteTimer -= dt;
-            if (data.CanMove && player.Input.JumpInput && data.CoyoteTimer > 0f)
-            {
-                MovementUtility.StartJump(player);
-                player.Input.UseJumpInput();
-            }
-
-            if (!data.PreserveAirMomentum && player.Input.JumpInputReleased && data.VerticalVelocity > 0f)
-            {
-                data.VerticalVelocity *= config.Jump.CutMultiplier;
-                player.Input.ConsumeJumpRelease();
-            }
-
-            if (player.WallRunState.CanStart(player))
-            {
-                player.ChangeState(player.WallRunState);
-                return;
-            }
-
-            float gravityMultiplier = data.VerticalVelocity > 0f
-                ? (player.Input.IsJumpHeld ? 1f : config.Jump.LowJumpGravityMultiplier)
-                : config.Jump.FallGravityMultiplier;
-            if (data.PreserveAirMomentum) gravityMultiplier = 1f;
-            float fallLimit = data.PreserveAirMomentum
-                ? Mathf.Min(data.VerticalVelocity, -config.Jump.MaxFallSpeed)
-                : -config.Jump.MaxFallSpeed;
-            data.VerticalVelocity = Mathf.Max(
-                data.VerticalVelocity - config.Jump.Gravity * gravityMultiplier * dt, fallLimit);
-
-            player.Controller.Move(new Vector3(data.Velocity.x, data.VerticalVelocity, data.Velocity.z) * dt);
-            if (player.Controller.isGrounded && data.VerticalVelocity <= 0f)
-                player.ChangeState(player.GroundedState);
+            groundConfig = movement.config.Ground;
+            jumpConfig = movement.config.Jump;
         }
 
-        public override void Exit(PlayerMovement player) { }
+        private float coyoteTimer;
+        public bool PreserveMomentum { get; private set; }
 
-        private static void UpdateMomentumAirControl(PlayerMovement player, float dt)
+        public void ResetOnLanding(float coyoteTime)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.GroundSettings config = player.Config.Ground;
-            if (!data.CanMove) return;
+            coyoteTimer = coyoteTime;
+            PreserveMomentum = false;
+        }
 
-            Vector2 input = Vector2.ClampMagnitude(player.Input.MoveInput, 1f);
+        public void ConsumeCoyoteTime() => coyoteTimer = 0f;
+        public void SetMomentumPreservation(bool preserve) => PreserveMomentum = preserve;
+
+        public override void Enter(PlayerMovement movement) { }
+
+        public override void Tick(PlayerMovement movement, float dt)
+        {
+
+            if (movement.DashState.TryStart(movement, airborne: true)) return;
+
+            movement.WallRunState.TickCooldown(dt);
+            if (PreserveMomentum)
+                UpdateMomentumAirControl(movement, dt);
+            else
+                MovementUtility.UpdatePlanarVelocity(movement, dt, groundConfig.AirControl);
+
+            coyoteTimer -= dt;
+            if (movement.CanMove && movement.Player.Input.JumpInput && coyoteTimer > 0f)
+            {
+                MovementUtility.StartJump(movement);
+                movement.Player.Input.UseJumpInput();
+            }
+
+            if (!PreserveMomentum && movement.Player.Input.JumpInputReleased && movement.VerticalVelocity > 0f)
+            {
+                movement.VerticalVelocity *= jumpConfig.CutMultiplier;
+                movement.Player.Input.ConsumeJumpRelease();
+            }
+
+            if (movement.WallRunState.TryStart(movement)) return;
+
+            float gravityMultiplier = movement.VerticalVelocity > 0f
+                ? (movement.Player.Input.IsJumpHeld ? 1f : jumpConfig.LowJumpGravityMultiplier)
+                : jumpConfig.FallGravityMultiplier;
+            if (PreserveMomentum) gravityMultiplier = 1f;
+            float fallLimit = PreserveMomentum
+                ? Mathf.Min(movement.VerticalVelocity, -jumpConfig.MaxFallSpeed)
+                : -jumpConfig.MaxFallSpeed;
+            movement.VerticalVelocity = Mathf.Max(
+                movement.VerticalVelocity - jumpConfig.Gravity * gravityMultiplier * dt, fallLimit);
+
+            movement.Player.Controller.Move(new Vector3(movement.Velocity.x, movement.VerticalVelocity, movement.Velocity.z) * dt);
+            if (movement.Player.Controller.isGrounded && movement.VerticalVelocity <= 0f)
+                movement.ChangeState(movement.GroundedState);
+        }
+
+        public override void Exit(PlayerMovement movement) { }
+
+        private void UpdateMomentumAirControl(PlayerMovement player, float dt)
+        {
+            if (!player.CanMove) return;
+
+            Vector2 input = Vector2.ClampMagnitude(player.Player.Input.MoveInput, 1f);
             Vector3 wish = player.transform.right * input.x + player.transform.forward * input.y;
             wish.y = 0f;
             float amount = wish.magnitude;
             if (amount < 0.001f) return;
 
             wish /= amount;
-            float targetSpeed = config.SprintSpeed * data.SpeedMultiplier;
-            float room = Mathf.Max(0f, targetSpeed - Vector3.Dot(data.Velocity, wish));
-            data.Velocity += wish * Mathf.Min(room, config.Acceleration * config.AirControl * amount * dt);
+            float targetSpeed = groundConfig.SprintSpeed * player.SpeedMultiplier;
+            float room = Mathf.Max(0f, targetSpeed - Vector3.Dot(player.Velocity, wish));
+            player.Velocity += wish * Mathf.Min(room, groundConfig.Acceleration * groundConfig.AirControl * amount * dt);
         }
     }
 }

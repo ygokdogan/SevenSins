@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Enemies.Combat.States
 {
-    public class EnemyAttackState : IState<EnemyCombatContext>
+    public class EnemyAttackState : IState<EnemyBase>
     {
         private readonly SamuraiMeleeAttackStyle style;
         private readonly HashSet<Collider> hitThisAttack = new HashSet<Collider>();
@@ -19,111 +19,111 @@ namespace Enemies.Combat.States
 
         public EnemyAttackState(SamuraiMeleeAttackStyle style) => this.style = style;
 
-        public void Enter(EnemyCombatContext ctx)
+        public void Enter(EnemyBase enemy)
         {
             hitThisAttack.Clear();
 
-            ctx.IsAttackWindowOpen = false;
-            ctx.IsAnimationFinished = false;
-            ctx.Movement.Stop();
-            ctx.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
+            enemy.IsAttackWindowOpen = false;
+            enemy.IsAnimationFinished = false;
+            enemy.Movement.Stop();
+            enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
             telegraphRemaining = style.AttackData != null ? style.AttackData.telegraphDuration : 0f;
             strikeStarted = false;
             lungeStopped = true;
-            startedOutsideAttackBox = !style.IsTargetInAttackBox(ctx);
+            startedOutsideAttackBox = !style.IsTargetInAttackBox(enemy);
             lungeRemaining = 0f;
             telegraphStopDistance = Mathf.Max(style.AttackRange * 0.85f,
-                ctx.HorizontalDistance - style.TelegraphAdvance);
-            if (ctx.Target != null)
-                ctx.Movement.MoveTo(ctx.Target.position, ctx.WalkSpeed, telegraphStopDistance);
+                enemy.HorizontalDistance - style.TelegraphAdvance);
+            if (enemy.Target != null)
+                enemy.Movement.MoveTo(enemy.Target.position, enemy.WalkSpeed, telegraphStopDistance);
             if (style.AttackData != null && !string.IsNullOrEmpty(style.AttackData.telegraphAnimation))
-                ctx.AnimationManager?.PlayAnimation(style.AttackData.telegraphAnimation);
+                enemy.AnimationManager?.PlayAnimation(style.AttackData.telegraphAnimation);
         }
 
-        public void Tick(EnemyCombatContext ctx, float dt)
+        public void Tick(EnemyBase enemy, float dt)
         {
-            if (ctx.Target == null)
+            if (enemy.Target == null)
             {
-                ctx.RequestTransition(ctx.States.Idle);
+                enemy.RequestTransition(enemy.States.Idle);
                 return;
             }
-            ctx.Movement.FaceTarget(ctx.Target, dt);
+            enemy.Movement.FaceTarget(enemy.Target, dt);
             if (!strikeStarted)
             {
-                if (ctx.Target != null)
-                    ctx.Movement.MoveTo(ctx.Target.position, ctx.WalkSpeed, telegraphStopDistance);
+                if (enemy.Target != null)
+                    enemy.Movement.MoveTo(enemy.Target.position, enemy.WalkSpeed, telegraphStopDistance);
                 telegraphRemaining -= dt;
                 if (telegraphRemaining <= 0f)
                 {
                     strikeStarted = true;
-                    ctx.Movement.Stop();
-                    StartLunge(ctx);
-                    ctx.AnimationManager.PlayAnimation(style.AttackData.animationName,
+                    enemy.Movement.Stop();
+                    StartLunge(enemy);
+                    enemy.AnimationManager.PlayAnimation(style.AttackData.animationName,
                         style.AttackData.crossFadeDuration);
                 }
                 return;
             }
 
             bool lunging = !lungeStopped;
-            AdvanceLunge(ctx, dt);
-            if (ctx.IsAttackWindowOpen || lunging)
-                PerformHitDetection(ctx);
+            AdvanceLunge(enemy, dt);
+            if (enemy.IsAttackWindowOpen || lunging)
+                PerformHitDetection(enemy);
 
-            if (ctx.IsAnimationFinished)
+            if (enemy.IsAnimationFinished)
             {
-                style.FinishAttack(ctx);
+                style.FinishAttack(enemy);
             }
         }
 
-        public void Exit(EnemyCombatContext ctx)
+        public void Exit(EnemyBase enemy)
         {
-            ctx.Movement.Stop();
+            enemy.Movement.Stop();
             hitThisAttack.Clear();
-            ctx.IsAttackWindowOpen = false;
-            ctx.IsAnimationFinished = false;
+            enemy.IsAttackWindowOpen = false;
+            enemy.IsAnimationFinished = false;
         }
 
-        private void StartLunge(EnemyCombatContext ctx)
+        private void StartLunge(EnemyBase enemy)
         {
-            if (ctx.Target == null || !ctx.Movement.IsOnNavMesh ||
-                (!startedOutsideAttackBox && style.IsTargetInAttackBox(ctx))) return;
+            if (enemy.Target == null || !enemy.Movement.IsOnNavMesh ||
+                (!startedOutsideAttackBox && style.IsTargetInAttackBox(enemy))) return;
 
             lungeRemaining = Mathf.Min(style.LungeDistance,
-                Mathf.Max(style.AttackBoxGap(ctx) + 0.2f, startedOutsideAttackBox ? 0.35f : 0f));
+                Mathf.Max(style.AttackBoxGap(enemy) + 0.2f, startedOutsideAttackBox ? 0.35f : 0f));
             lungeTimeRemaining = 0.3f;
             lungeStopped = lungeRemaining <= 0f;
-            if (!lungeStopped) ctx.Movement.BeginLunge();
+            if (!lungeStopped) enemy.Movement.BeginLunge();
         }
 
-        private void AdvanceLunge(EnemyCombatContext ctx, float dt)
+        private void AdvanceLunge(EnemyBase enemy, float dt)
         {
             if (lungeStopped) return;
             lungeTimeRemaining -= dt;
-            if (lungeTimeRemaining <= 0f || ctx.Target == null || !ctx.Movement.IsOnNavMesh)
+            if (lungeTimeRemaining <= 0f || enemy.Target == null || !enemy.Movement.IsOnNavMesh)
             {
-                StopLunge(ctx);
+                StopLunge(enemy);
                 return;
             }
 
-            float step = ctx.Movement.LungeTowards(ctx.Target,
+            float step = enemy.Movement.LungeTowards(enemy.Target,
                 Mathf.Min(lungeRemaining, style.LungeSpeed * dt), style.AttackRange * 0.7f);
             if (step <= 0f)
             {
-                StopLunge(ctx);
+                StopLunge(enemy);
                 return;
             }
 
             lungeRemaining -= step;
-            if (lungeRemaining <= 0f) StopLunge(ctx);
+            if (lungeRemaining <= 0f) StopLunge(enemy);
         }
 
-        private void StopLunge(EnemyCombatContext ctx)
+        private void StopLunge(EnemyBase enemy)
         {
             lungeStopped = true;
-            ctx.Movement.Stop();
+            enemy.Movement.Stop();
         }
 
-        private void PerformHitDetection(EnemyCombatContext ctx)
+        private void PerformHitDetection(EnemyBase enemy)
         {
             var col = style.HitCollider;
             if (col == null) return;
@@ -147,14 +147,14 @@ namespace Enemies.Combat.States
 
                 if (hit.TryGetComponent(out IDamageable damageable))
                 {
-                    Vector3 hitPoint = HitPointUtility.OnTargetSurface(hit, ctx.Transform.position, out Vector3 hitNormal);
-                    Vector3 hitDir = hit.transform.position - ctx.Transform.position;
+                    Vector3 hitPoint = HitPointUtility.OnTargetSurface(hit, enemy.Transform.position, out Vector3 hitNormal);
+                    Vector3 hitDir = hit.transform.position - enemy.Transform.position;
                     hitDir.y = 0f;
 
                     if (hitDir.sqrMagnitude > 0.001f)
                         hitDir.Normalize();
                     else
-                        hitDir = ctx.Transform.forward;
+                        hitDir = enemy.Transform.forward;
 
                     HitInfo info = new HitInfo
                     {
@@ -165,7 +165,7 @@ namespace Enemies.Combat.States
                         hitPoint = hitPoint,
                         hitNormal = hitNormal,
                         hitDirection = hitDir,
-                        attacker = ctx.Transform.gameObject
+                        attacker = enemy.Transform.gameObject
                     };
 
                     damageable.TakeHit(info);

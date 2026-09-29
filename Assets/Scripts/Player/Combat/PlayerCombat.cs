@@ -2,10 +2,8 @@ using System.Collections;
 using Combat;
 using Core;
 using Enemies.Combat;
-using Input;
 using Player.Combat.States;
 using Player.Combat.VIsual_Feedback;
-using Player.Movement;
 using UnityEngine;
 
 namespace Player.Combat
@@ -13,99 +11,93 @@ namespace Player.Combat
     [RequireComponent(typeof(PlayerManager))]
     public class PlayerCombat : MonoBehaviour, IDamageable
     {
-        [Header("Starting Attacks")]
-        [SerializeField] private AttackData defaultLightAttack;
-        [SerializeField] private AttackData sheathedAttack;
+        public PlayerCombatConfig config = new();
+        public event System.Action HitConfirmed;
+        public void NotifyHitConfirmed() => HitConfirmed?.Invoke();
 
         [Header("Hit Detection")]
         [SerializeField] private BoxCollider hitCollider;
         [SerializeField] private LayerMask hittableLayers;
 
-        [Header("Hit Reaction")]
-        [Tooltip("Base duration, multiplied by the incoming attack's Impact Multiplier.")]
-        [SerializeField, Min(0f)] private float hitRecoveryDuration = 0.25f;
-
-        [Header("Parry")]
-        [SerializeField, Min(0f)] private float parryCooldown = 0.9f;
-        
-        private StateMachine<CombatContext> stateMachine;
-        private CombatContext ctx;
-        private InputHandler input;
-        private PlayerAnimationManager animManager;
+        private StateMachine<PlayerCombat> stateMachine;
+        private PlayerAnimationManager animationManager;
         private CameraManager cameraManager;
         private GuardImpactVisual guardImpactVisual;
         private PlayerHitFeedback hitFeedback;
         private Coroutine hitStopCoroutine;
         
-        public bool IsSheathed => ctx.IsSheathed;
-        public bool IsBlocking => ctx.IsBlocking;
-        public IState<CombatContext> CurrentState => stateMachine?.CurrentState;
+        public PlayerManager Player { get; private set; }
+        public CombatIdleState IdleState { get; private set; }
+        public CombatAttackState AttackState { get; private set; }
+        public CombatSheatheState SheatheState { get; private set; }
+        public CombatBlockState BlockState { get; private set; }
+        public CombatHitState HitState { get; private set; }
+
+        public BoxCollider HitCollider => hitCollider;
+        public LayerMask HittableLayers => hittableLayers;
+        public bool IsSheathed { get; set; } = true;
+        public bool IsBlocking => CurrentState != null && CurrentState == BlockState;
+        public bool IsParrying => IsBlocking && BlockState.IsParrying;
+        public PlayerCombatState CurrentState => stateMachine?.CurrentState as PlayerCombatState;
+
+        public void ChangeState(PlayerCombatState nextState) => stateMachine.ChangeState(nextState);
+        public void ForceChangeState(PlayerCombatState nextState) => stateMachine.ForceChangeState(nextState);
 
         private void Awake()
         {
-            var player = GetComponent<PlayerManager>();
-            player.Initialize();
-            input = player.Input;
-            animManager = player.Animation;
-            cameraManager = player.Camera;
+            Player = GetComponent<PlayerManager>();
+            Player.Initialize();
+            animationManager = Player.AnimationManager;
+            cameraManager = Player.Camera;
             guardImpactVisual = GetComponentInChildren<GuardImpactVisual>();
             hitFeedback = GetComponentInChildren<PlayerHitFeedback>();
 
-            var states = new CombatStates
-            {
-                Idle = new CombatIdleState(),
-                Attack = new CombatAttackState(),
-                Sheathe = new CombatSheatheState(),
-                Block = new CombatBlockState(),
-                Hit = new CombatHitState()
-            };
+            IdleState = Player.GetCombatState<CombatIdleState>();
+            AttackState = Player.GetCombatState<CombatAttackState>();
+            SheatheState = Player.GetCombatState<CombatSheatheState>();
+            BlockState = Player.GetCombatState<CombatBlockState>();
+            HitState = Player.GetCombatState<CombatHitState>();
 
-            ctx = new CombatContext
-            {
-                Transform = transform,
-                AnimationManager = animManager,
-                Controller = player.Controller,
-                Input = input,
-                HitCollider = hitCollider,
-                HittableLayers = hittableLayers,
-                CameraManager = cameraManager,
-                HitRecoveryDuration = hitRecoveryDuration,
-                ParryCooldown = parryCooldown,
-                TriggerHitStop = TriggerHitStop,
-                Player = player,
-                States = states,
-                DefaultLightAttack = defaultLightAttack,
-                SheathedAttack = sheathedAttack,
-                IsSheathed = true
-            };
+            IdleState.Initialize(this);
+            AttackState.Initialize(this);
+            SheatheState.Initialize(this);
+            BlockState.Initialize(this);
+            HitState.Initialize(this);
+
+            stateMachine = new StateMachine<PlayerCombat>(this);
+
+            animationManager.OnComboWindowOpened += OnComboWindowOpened;
+            animationManager.OnComboWindowClosed += OnComboWindowClosed;
+            animationManager.OnAnimationFinished += OnAnimationFinished;
+            animationManager.OnLungeTriggered += OnLungeTriggered;
+            animationManager.OnAttackWindowOpened += OnAttackWindowOpened;
+            animationManager.OnAttackWindowClosed += OnAttackWindowClosed;
             
-            stateMachine = new StateMachine<CombatContext>(ctx);
-            ctx.RequestTransition = stateMachine.ChangeState;
-            
-            animManager.OnComboWindowOpened += OnComboWindowOpened;
-            animManager.OnComboWindowClosed += OnComboWindowClosed;
-            animManager.OnAnimationFinished += OnAnimationFinished;
-            animManager.OnLungeTriggered += OnLungeTriggered;
-            animManager.OnAttackWindowOpened += OnAttackWindowOpened;
-            animManager.OnAttackWindowClosed += OnAttackWindowClosed;
-            
-            stateMachine.ChangeState(states.Idle);
+            ChangeState(IdleState);
         }
 
         private void OnDestroy()
         {
-            animManager.OnComboWindowOpened -= OnComboWindowOpened;
-            animManager.OnComboWindowClosed -= OnComboWindowClosed;
-            animManager.OnAnimationFinished -= OnAnimationFinished;
-            animManager.OnLungeTriggered -= OnLungeTriggered;
-            animManager.OnAttackWindowOpened -= OnAttackWindowOpened;
-            animManager.OnAttackWindowClosed -= OnAttackWindowClosed;
+            if (animationManager == null) return;
+            animationManager.OnComboWindowOpened -= OnComboWindowOpened;
+            animationManager.OnComboWindowClosed -= OnComboWindowClosed;
+            animationManager.OnAnimationFinished -= OnAnimationFinished;
+            animationManager.OnLungeTriggered -= OnLungeTriggered;
+            animationManager.OnAttackWindowOpened -= OnAttackWindowOpened;
+            animationManager.OnAttackWindowClosed -= OnAttackWindowClosed;
+        }
+
+        private void OnEnable()
+        {
+            if (stateMachine != null && CurrentState == null) ChangeState(IdleState);
         }
 
         private void OnDisable()
         {
+            if (stateMachine != null) ChangeState(null);
             if (hitStopCoroutine != null)
             {
+                StopCoroutine(hitStopCoroutine);
                 Time.timeScale = 1f;
                 hitStopCoroutine = null;
             }
@@ -131,14 +123,14 @@ namespace Player.Combat
         {
             if (hitInfo.attacker != null && CanBlock(hitInfo.attacker.transform))
             {
-                bool parried = ctx.IsParrying;
+                bool parried = IsParrying;
                 Vector3 point = hitInfo.hitPoint != Vector3.zero ? hitInfo.hitPoint : transform.position + Vector3.up;
-                guardImpactVisual.Play(point, hitInfo.hitNormal, parried, hitInfo.impactMultiplier);
+                guardImpactVisual?.Play(point, hitInfo.hitNormal, parried, hitInfo.impactMultiplier);
                 cameraManager?.Shake(parried ? 1.4f : 0.9f, parried ? 0.22f : 0.15f);
                 
                 if (parried)
                 {
-                    var enemy = hitInfo.attacker.GetComponentInParent<EnemyCombat>();
+                    var enemy = hitInfo.attacker.GetComponentInParent<EnemyBase>();
                     if (enemy != null) enemy.Parried();
                     return;
                 }
@@ -147,7 +139,7 @@ namespace Player.Combat
                 if (knockbackDirection.sqrMagnitude < 0.001f && hitInfo.attacker != null)
                     knockbackDirection = transform.position - hitInfo.attacker.transform.position;
                 
-                ctx.Player.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce * 0.3f));
+                Player.Movement.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce * 0.3f));
                 
             }
             else
@@ -156,17 +148,16 @@ namespace Player.Combat
                 if (knockbackDirection.sqrMagnitude < 0.001f && hitInfo.attacker != null)
                     knockbackDirection = transform.position - hitInfo.attacker.transform.position;
                 
-                ctx.Player.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce));
-                ctx.CurrentHit = hitInfo;
-                stateMachine.ForceChangeState(ctx.States.Hit);
+                Player.Movement.ApplyKnockback(knockbackDirection, Mathf.Max(2f, hitInfo.knockbackForce));
+                HitState.Begin(this, hitInfo);
                 cameraManager?.Shake(0.9f, 0.2f);
-                hitFeedback.Play();
+                hitFeedback?.Play();
             }
         }
 
         public bool TryReflectProjectile(HitInfo hitInfo)
         {
-            if (!ctx.IsParrying || hitInfo.attacker == null ||
+            if (!IsParrying || hitInfo.attacker == null ||
                 !CanBlock(hitInfo.attacker.transform)) return false;
 
             Vector3 point = hitInfo.hitPoint != Vector3.zero
@@ -178,7 +169,7 @@ namespace Player.Combat
 
         private bool CanBlock(Transform attacker)
         {
-            if (!ctx.IsBlocking) return false;
+            if (!IsBlocking) return false;
             
             Vector3 directionToAttacker = (attacker.position - transform.position).normalized;
             directionToAttacker.y = 0f;
@@ -191,17 +182,11 @@ namespace Player.Combat
 
         private void Update() => stateMachine.Tick(Time.deltaTime);
 
-        private void OnComboWindowOpened()
-        {
-            if (stateMachine.CurrentState == ctx.States.Attack) ctx.IsComboWindowOpen = true;
-        }
-        private void OnComboWindowClosed() => ctx.IsComboWindowOpen = false;
-        private void OnAnimationFinished() => ctx.IsAnimationFinished = true;
-        private void OnLungeTriggered() => ctx.OnLungeTriggered?.Invoke();
-        private void OnAttackWindowOpened()
-        {
-            if (stateMachine.CurrentState == ctx.States.Attack) ctx.IsAttackWindowOpen = true;
-        }
-        private void OnAttackWindowClosed() => ctx.IsAttackWindowOpen = false;
+        private void OnComboWindowOpened() => CurrentState?.OnComboWindowOpened();
+        private void OnComboWindowClosed() => CurrentState?.OnComboWindowClosed();
+        private void OnAnimationFinished() => CurrentState?.OnAnimationFinished();
+        private void OnLungeTriggered() => CurrentState?.OnLungeTriggered();
+        private void OnAttackWindowOpened() => CurrentState?.OnAttackWindowOpened();
+        private void OnAttackWindowClosed() => CurrentState?.OnAttackWindowClosed();
     }
 }

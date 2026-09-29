@@ -13,23 +13,15 @@ namespace Enemies.Combat.Utilities
         [SerializeField] private ParticleSystem hitParticles;
         [SerializeField] private ParticleSystem deathParticles;
 
-        private AudioSource audioSource;
-        private AudioClip defaultHitClip;
+        [SerializeField] private AudioSource audioSource;
+        [SerializeField] private AudioClip defaultHitClip;
 
         private void Awake()
         {
             Prepare(hitParticles);
             Prepare(deathParticles);
 
-            audioSource = GetComponent<AudioSource>();
-            if (audioSource == null)
-            {
-                audioSource = gameObject.AddComponent<AudioSource>();
-                audioSource.playOnAwake = false;
-                audioSource.spatialBlend = 1f;
-            }
 
-            GenerateDefaultHitClip();
         }
 
         public void SpawnHitVfx(HitInfo hitInfo)
@@ -134,7 +126,29 @@ namespace Enemies.Combat.Utilities
             }
         }
 
-        private void GenerateDefaultHitClip()
+#if UNITY_EDITOR
+        public void BakePersistentObjects()
+        {
+            if (audioSource == null) audioSource = GetComponent<AudioSource>();
+            if (audioSource == null)
+            {
+                audioSource = gameObject.AddComponent<AudioSource>();
+                audioSource.playOnAwake = false;
+                audioSource.spatialBlend = 1f;
+            }
+            if (defaultHitClip != null) return;
+            string path = "Assets/Generated/RuntimeSetup/DefaultHit.wav";
+            defaultHitClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+            if (defaultHitClip != null) return;
+            var randomState = Random.state;
+            Random.InitState(147);
+            GenerateDefaultHitClip(path);
+            Random.state = randomState;
+            UnityEditor.AssetDatabase.ImportAsset(path);
+            defaultHitClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>(path);
+        }
+
+        private void GenerateDefaultHitClip(string path)
         {
             const int sampleRate = 44100;
             int sampleCount = (int)(sampleRate * 0.12f);
@@ -148,8 +162,20 @@ namespace Enemies.Combat.Utilities
                 samples[i] = (sine + (Random.value * 2f - 1f) * 0.35f) * envelope * 0.75f;
             }
 
-            defaultHitClip = AudioClip.Create("DummyImpactSound", sampleCount, 1, sampleRate, false);
-            defaultHitClip.SetData(samples, 0);
+            using (var writer = new System.IO.BinaryWriter(System.IO.File.Create(path)))
+            {
+                writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+                writer.Write(36 + sampleCount * 2);
+                writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+                writer.Write(16); writer.Write((short)1); writer.Write((short)1);
+                writer.Write(sampleRate); writer.Write(sampleRate * 2);
+                writer.Write((short)2); writer.Write((short)16);
+                writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+                writer.Write(sampleCount * 2);
+                foreach (float sample in samples)
+                    writer.Write((short)(Mathf.Clamp(sample, -1, 1) * short.MaxValue));
+            }
         }
+#endif
     }
 }

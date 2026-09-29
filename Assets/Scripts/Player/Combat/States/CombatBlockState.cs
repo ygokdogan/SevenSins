@@ -1,70 +1,48 @@
-using Core;
+using Player.Movement;
 using UnityEngine;
 
 namespace Player.Combat.States
 {
-    public class CombatBlockState : IState<CombatContext>
+    public class CombatBlockState : PlayerCombatState
     {
-        private const float ParryWindowDuration = 0.2f;
-        private const float BlockMoveSpeedMultiplier = 0.7f;
         private float blockTimer;
+        private float nextParryTime;
 
-        public void Enter(CombatContext ctx)
+        public bool IsParrying { get; private set; }
+
+        public override void Enter(PlayerCombat combat)
         {
-            bool canParry = ctx.Input.BlockInput && Time.time >= ctx.NextParryTime;
-            ctx.Input.UseBlockInput();
-            
-            ctx.CurrentAttack = null;
-            ctx.IsComboWindowOpen = false;
-            ctx.IsAnimationFinished = false;
-            
-            ctx.IsBlocking = true;
-            ctx.IsParrying = canParry;
-            if (canParry) ctx.NextParryTime = Time.time + ctx.ParryCooldown;
+            IsParrying = player.Input.BlockInput && Time.time >= nextParryTime;
+            player.Input.UseBlockInput();
+            if (IsParrying) nextParryTime = Time.time + config.ParryCooldown;
             blockTimer = 0f;
+            combat.IsSheathed = false;
 
-            if (ctx.IsSheathed)
-            {
-                ctx.IsSheathed = false;
-            }
-
-            ctx.Player.CanSprint = false;
-            ctx.Player.SpeedMultiplier = BlockMoveSpeedMultiplier;
-            ctx.AnimationManager.PlayBlockAnimation();
+            player.Movement.Restrictions.Add(this, MovementRestriction.Sprint);
+            player.Movement.Restrictions.SetSpeedMultiplier(this, config.BlockMoveSpeedMultiplier);
+            player.AnimationManager.PlayBlockAnimation();
         }
 
-        public void Tick(CombatContext ctx, float dt)
+        public override void Tick(PlayerCombat combat, float deltaTime)
         {
-            blockTimer += dt;
-            if (blockTimer >= ParryWindowDuration)
+            blockTimer += deltaTime;
+            if (blockTimer >= config.ParryWindowDuration) IsParrying = false;
+
+            if (!player.Input.IsBlockHeld)
             {
-                ctx.IsParrying = false;
-            }
-            
-            if (!ctx.Input.IsBlockHeld)
-            {
-                ctx.RequestTransition(ctx.States.Idle);
+                combat.ChangeState(combat.IdleState);
                 return;
             }
-            
-            if (ctx.Input.PrimaryAttackInput)
-            {
-                ctx.CurrentAttack = ctx.DefaultLightAttack;
-                if (ctx.CurrentAttack != null)
-                {
-                    ctx.RequestTransition(ctx.States.Attack);
-                    return;
-                }
-            }
+
+            if (player.Input.PrimaryAttackInput)
+                combat.AttackState.Begin(combat, config.DefaultLightAttack);
         }
 
-        public void Exit(CombatContext ctx)
+        public override void Exit(PlayerCombat combat)
         {
-            ctx.IsBlocking = false;
-            ctx.IsParrying = false;
-            ctx.Player.CanSprint = true;
-            ctx.Player.SpeedMultiplier = 1f;
-            ctx.AnimationManager.StopBlockAnimation();
+            player.Movement.Restrictions.RemoveAll(this);
+            IsParrying = false;
+            player.AnimationManager.StopBlockAnimation();
         }
     }
 }

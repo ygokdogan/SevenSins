@@ -108,7 +108,9 @@ namespace Enemies.Combat
                 }
 
                 damageable.TakeHit(info);
-                if (reflected && behaviour is EnemyCombat enemy)
+                if (reflected && attack.damage > 0f)
+                    owner.GetComponentInParent<PlayerCombat>()?.NotifyHitConfirmed();
+                if (reflected && behaviour is EnemyBase enemy)
                     enemy.Parried();
                 break;
             }

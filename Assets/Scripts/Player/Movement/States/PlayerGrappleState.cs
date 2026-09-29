@@ -1,34 +1,53 @@
 using UnityEngine;
 
-namespace Player.Movement
+namespace Player.Movement.States
 {
     public sealed class PlayerGrappleState : PlayerMovementState
     {
+        private PlayerMovementConfig.GrappleSettings config;
+        private PlayerMovementConfig.WallRunSettings wallRunConfig;
+
+        public override void Initialize(PlayerMovement movement)
+        {
+            config = movement.config.Grapple;
+            wallRunConfig = movement.config.WallRun;
+        }
+
         private float elapsed;
         private float blockedTime;
         private Vector3 velocity;
         private Vector3 approachDirection;
+        private Vector3 anchor;
+        private Vector3 surfaceNormal;
+        private bool flyThrough;
 
-        public override void Enter(PlayerMovement player)
+        public Vector3 Anchor => anchor;
+
+        public void Begin(PlayerMovement movement, Vector3 anchorPoint, Vector3 normal, bool passThrough)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            elapsed = blockedTime = 0f;
-            velocity = data.Velocity + Vector3.up * data.VerticalVelocity;
-            approachDirection = (data.GrappleAnchor - player.Controller.bounds.center).normalized;
-            data.PreserveAirMomentum = true;
-            data.CoyoteTimer = 0f;
-            player.Input.UseJumpInput();
-            player.Input.ConsumeJumpRelease();
+            anchor = anchorPoint;
+            surfaceNormal = normal.normalized;
+            flyThrough = passThrough;
+            movement.ChangeState(this);
         }
 
-        public override void Tick(PlayerMovement player, float dt)
+        public override void Enter(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.GrappleSettings config = player.Config.Grapple;
-            if (!data.GrappleHeld || !data.CanMove || player.Grapple == null ||
-                !player.Grapple.TryGetAnchor(out data.GrappleAnchor) || elapsed >= config.Timeout)
+            elapsed = blockedTime = 0f;
+            velocity = movement.Velocity + Vector3.up * movement.VerticalVelocity;
+            approachDirection = (anchor - movement.Player.Controller.bounds.center).normalized;
+            movement.AirborneState.SetMomentumPreservation(true);
+            movement.AirborneState.ConsumeCoyoteTime();
+            movement.Player.Input.UseJumpInput();
+            movement.Player.Input.ConsumeJumpRelease();
+        }
+
+        public override void Tick(PlayerMovement movement, float dt)
+        {
+            if (!movement.CanMove || movement.Player.GrappleController == null ||
+                !movement.Player.GrappleController.TryGetAnchor(out anchor) || elapsed >= config.Timeout)
             {
-                Leave(player);
+                Leave(movement);
                 return;
             }
             if (dt <= 0f) return;
@@ -38,23 +57,23 @@ namespace Player.Movement
             for (int i = 0; i < steps; i++)
             {
                 elapsed += step;
-                Vector3 center = player.Controller.bounds.center;
-                Vector3 target = data.GrappleAnchor;
-                if (!data.GrappleFlyThrough)
+                Vector3 center = movement.Player.Controller.bounds.center;
+                Vector3 target = anchor;
+                if (!flyThrough)
                 {
-                    Vector3 extent = player.Controller.bounds.extents;
+                    Vector3 extent = movement.Player.Controller.bounds.extents;
                     float capsuleRadius = Mathf.Max(extent.x, extent.z);
                     float support = capsuleRadius +
-                        Mathf.Max(0f, extent.y - capsuleRadius) * Mathf.Abs(data.GrappleNormal.y);
-                    target += data.GrappleNormal * (support + 0.15f);
+                        Mathf.Max(0f, extent.y - capsuleRadius) * Mathf.Abs(surfaceNormal.y);
+                    target += surfaceNormal * (support + 0.15f);
                 }
 
                 Vector3 delta = target - center;
                 float distance = delta.magnitude;
-                float radius = data.GrappleFlyThrough ? config.ArrivalRadius : 0.1f;
+                float radius = flyThrough ? config.ArrivalRadius : 0.1f;
                 if (distance <= radius + 0.01f)
                 {
-                    Launch(player);
+                    Launch(movement);
                     return;
                 }
 
@@ -69,45 +88,43 @@ namespace Player.Movement
                 if (forwardStep > distance - radius)
                     motion *= (distance - radius) / forwardStep;
 
-                data.Velocity = Vector3.ProjectOnPlane(velocity, Vector3.up);
-                data.VerticalVelocity = velocity.y;
-                Vector3 before = player.Controller.transform.position;
-                player.Controller.Move(motion);
-                float moved = Vector3.Distance(before, player.Controller.transform.position);
+                movement.Velocity = Vector3.ProjectOnPlane(velocity, Vector3.up);
+                movement.VerticalVelocity = velocity.y;
+                Vector3 before = movement.Player.Controller.transform.position;
+                movement.Player.Controller.Move(motion);
+                float moved = Vector3.Distance(before, movement.Player.Controller.transform.position);
                 blockedTime = motion.magnitude > 0.002f && moved < motion.magnitude * 0.15f
                     ? blockedTime + step : 0f;
                 if (blockedTime > 0.18f)
                 {
-                    Leave(player);
+                    Leave(movement);
                     return;
                 }
             }
         }
 
-        private void Launch(PlayerMovement player)
+        private void Launch(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            PlayerMovementConfig.GrappleSettings config = player.Config.Grapple;
-            if (data.GrappleFlyThrough)
+            if (flyThrough)
             {
                 Vector3 launch = approachDirection * config.FlySpeed + Vector3.up * config.FlyLift;
-                data.Velocity = Vector3.ProjectOnPlane(launch, Vector3.up);
-                data.VerticalVelocity = launch.y;
-                player.NotifyGrappleLaunched();
-                player.ChangeState(player.AirborneState);
+                movement.Velocity = Vector3.ProjectOnPlane(launch, Vector3.up);
+                movement.VerticalVelocity = launch.y;
+                movement.NotifyGrappleLaunched();
+                movement.Player.Camera?.Shake(0.22f, 0.09f);
+                movement.ChangeState(movement.AirborneState);
                 return;
             }
 
-            if (Mathf.Abs(data.GrappleNormal.y) < 0.2f)
+            if (Mathf.Abs(surfaceNormal.y) < 0.2f)
             {
-                data.GrappleWallRunEntry = true;
-                player.ChangeState(player.WallRunState);
+                movement.WallRunState.Begin(movement, surfaceNormal, movement.Player.GrappleController.AnchorLayerMask);
             }
             else
             {
-                data.Velocity = Vector3.ProjectOnPlane(data.Velocity, data.GrappleNormal);
-                data.VerticalVelocity = 0f;
-                Leave(player);
+                movement.Velocity = Vector3.ProjectOnPlane(movement.Velocity, surfaceNormal);
+                movement.VerticalVelocity = 0f;
+                Leave(movement);
             }
         }
 
@@ -116,14 +133,12 @@ namespace Player.Movement
             player.ResumeLocomotion();
         }
 
-        public override void Exit(PlayerMovement player)
+        public override void Exit(PlayerMovement movement)
         {
-            PlayerMovementRuntimeData data = player.Data;
-            data.GrappleHeld = false;
-            data.CoyoteTimer = 0f;
-            data.WallRunCooldownTimer = Mathf.Max(0.4f, player.Config.WallRun.Cooldown);
-            player.Input.UseJumpInput();
-            player.Input.ConsumeJumpRelease();
+            movement.AirborneState.ConsumeCoyoteTime();
+            movement.WallRunState.StartCooldown(Mathf.Max(0.4f, wallRunConfig.Cooldown));
+            movement.Player.Input.UseJumpInput();
+            movement.Player.Input.ConsumeJumpRelease();
         }
     }
 }

@@ -28,11 +28,12 @@ MonoBehaviour:
     CutMultiplier: 0.7
     CoyoteTime: 0.15
   Dash:
-    Speed: 25
-    Duration: 0.1
+    Speed: 20
+    Duration: 0.2
     Cooldown: 0.55
   WallRun:
     Layers:
+      serializedVersion: 2
       m_Bits: 1
     CheckDistance: 0.7
     Speed: 9
