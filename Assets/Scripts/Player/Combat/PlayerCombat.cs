@@ -1,7 +1,9 @@
 using System.Collections;
 using Combat;
+using Combat.AttackIndicators;
 using Core;
 using Enemies.Combat;
+using Enemies.Core;
 using Player.Combat.States;
 using Player.Combat.VIsual_Feedback;
 using UnityEngine;
@@ -12,8 +14,12 @@ namespace Player.Combat
     public class PlayerCombat : MonoBehaviour, IDamageable
     {
         public PlayerCombatConfig config = new();
-        public event System.Action HitConfirmed;
-        public void NotifyHitConfirmed() => HitConfirmed?.Invoke();
+        
+
+        [Header("Blocked Strike Feedback")]
+        [SerializeField, Min(0f)] private float blockedStrikeKnockback = 2.2f;
+        [SerializeField, Min(0f)] private float blockedStrikeShake = 0.35f;
+        private global::Player.Camera_Juice.WeaponBob weaponBob;
 
         [Header("Hit Detection")]
         [SerializeField] private BoxCollider hitCollider;
@@ -40,7 +46,19 @@ namespace Player.Combat
         public bool IsParrying => IsBlocking && BlockState.IsParrying;
         public PlayerCombatState CurrentState => stateMachine?.CurrentState as PlayerCombatState;
 
-        public void ChangeState(PlayerCombatState nextState) => stateMachine.ChangeState(nextState);
+        public void ChangeState(PlayerCombatState nextState)
+        {
+            if ((nextState == AttackState || nextState == BlockState || nextState == SheatheState) &&
+                Player.GrappleController != null && !Player.GrappleController.TryPerformAction()) return;
+            stateMachine.ChangeState(nextState);
+        }
+        public void CancelAttackForGrapple()
+        {
+            if (CurrentState != AttackState) return;
+            ForceChangeState(IdleState); // Exit closes hit/combo windows and releases lunge restrictions.
+            animationManager.StopBlockAnimation(); // Return the unsheathed weapon to its idle pose.
+        }
+
         public void ForceChangeState(PlayerCombatState nextState) => stateMachine.ForceChangeState(nextState);
 
         private void Awake()
@@ -51,6 +69,7 @@ namespace Player.Combat
             cameraManager = Player.Camera;
             guardImpactVisual = GetComponentInChildren<GuardImpactVisual>();
             hitFeedback = GetComponentInChildren<PlayerHitFeedback>();
+            weaponBob = GetComponentInChildren<global::Player.Camera_Juice.WeaponBob>();
 
             IdleState = Player.GetCombatState<CombatIdleState>();
             AttackState = Player.GetCombatState<CombatAttackState>();
@@ -121,9 +140,10 @@ namespace Player.Combat
         
         public void TakeHit(HitInfo hitInfo)
         {
-            if (hitInfo.attacker != null && CanBlock(hitInfo.attacker.transform))
+            GuardResponse response = ResolveGuard(hitInfo);
+            if (response != GuardResponse.Hit)
             {
-                bool parried = IsParrying;
+                bool parried = response == GuardResponse.Parry;
                 Vector3 point = hitInfo.hitPoint != Vector3.zero ? hitInfo.hitPoint : transform.position + Vector3.up;
                 guardImpactVisual?.Play(point, hitInfo.hitNormal, parried, hitInfo.impactMultiplier);
                 cameraManager?.Shake(parried ? 1.4f : 0.9f, parried ? 0.22f : 0.15f);
@@ -157,8 +177,7 @@ namespace Player.Combat
 
         public bool TryReflectProjectile(HitInfo hitInfo)
         {
-            if (!IsParrying || hitInfo.attacker == null ||
-                !CanBlock(hitInfo.attacker.transform)) return false;
+            if (ResolveGuard(hitInfo) != GuardResponse.Parry) return false;
 
             Vector3 point = hitInfo.hitPoint != Vector3.zero
                 ? hitInfo.hitPoint : transform.position + Vector3.up;
@@ -166,6 +185,9 @@ namespace Player.Combat
             cameraManager?.Shake(1.4f, 0.22f);
             return true;
         }
+
+        private GuardResponse ResolveGuard(HitInfo hit) => AttackDefenseRules.Resolve(hit.defense,
+            IsBlocking, IsParrying, hit.attacker != null && CanBlock(hit.attacker.transform));
 
         private bool CanBlock(Transform attacker)
         {
@@ -179,8 +201,26 @@ namespace Player.Combat
             float dotProduct = Vector3.Dot(forward.normalized, directionToAttacker.normalized);
             return dotProduct >= 0.5f;
         }
+        
+        public void OnStrikeBlocked(Vector3 blockerPosition)
+        {
+            if (CurrentState != AttackState || !AttackState.DeflectOnBlock()) return;
+            
+            Vector3 away = transform.position - blockerPosition;
+            if (away.sqrMagnitude < 0.001f) away = -transform.forward;
+            
+            Player.Movement.ApplyKnockback(away, blockedStrikeKnockback);
+            cameraManager?.Shake(blockedStrikeShake, 0.12f);
+            weaponBob?.PlayBlockedRecoil();
+            TriggerHitStop(0.035f);
+        }
 
-        private void Update() => stateMachine.Tick(Time.deltaTime);
+        private void Update()
+        {
+            if (Player.GrappleController != null && !Player.GrappleController.ProcessActionInput() &&
+                CurrentState != HitState) return;
+            stateMachine.Tick(Time.deltaTime);
+        }
 
         private void OnComboWindowOpened() => CurrentState?.OnComboWindowOpened();
         private void OnComboWindowClosed() => CurrentState?.OnComboWindowClosed();

@@ -4,6 +4,7 @@ namespace Combat
 {
     public struct HitInfo
     {
+        public Combat.AttackIndicators.AttackDefense defense;
         public float damage;
         public float poiseDamage;
         public float impactMultiplier;

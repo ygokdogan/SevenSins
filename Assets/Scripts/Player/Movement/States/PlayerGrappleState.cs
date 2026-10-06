@@ -34,6 +34,10 @@ namespace Player.Movement.States
         public override void Enter(PlayerMovement movement)
         {
             elapsed = blockedTime = 0f;
+            movement.Player.GrappleController.DiscardActionInputs();
+            var combat = movement.Player.Combat;
+            if (combat != null && combat.CurrentState != combat.HitState)
+                combat.ChangeState(combat.IdleState);
             velocity = movement.Velocity + Vector3.up * movement.VerticalVelocity;
             approachDirection = (anchor - movement.Player.Controller.bounds.center).normalized;
             movement.AirborneState.SetMomentumPreservation(true);
@@ -105,6 +109,13 @@ namespace Player.Movement.States
 
         private void Launch(PlayerMovement movement)
         {
+            if (movement.Player.GrappleController.HasEnemyAnchor)
+            {
+                movement.Velocity = Vector3.zero;
+                movement.VerticalVelocity = 0f;
+                Leave(movement);
+                return;
+            }
             if (flyThrough)
             {
                 Vector3 launch = approachDirection * config.FlySpeed + Vector3.up * config.FlyLift;
@@ -135,6 +146,7 @@ namespace Player.Movement.States
 
         public override void Exit(PlayerMovement movement)
         {
+            movement.Player.GrappleController.DiscardActionInputs();
             movement.AirborneState.ConsumeCoyoteTime();
             movement.WallRunState.StartCooldown(Mathf.Max(0.4f, wallRunConfig.Cooldown));
             movement.Player.Input.UseJumpInput();

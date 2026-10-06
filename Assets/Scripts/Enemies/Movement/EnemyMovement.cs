@@ -13,8 +13,50 @@ namespace Enemies.Combat
         private Vector3 knockbackVelocity;
         private float accelerationBeforeDash;
         private bool dashing;
+        private float baseOffsetBeforePull;
 
-        public bool IsOnNavMesh => agent != null && agent.isOnNavMesh;
+        public bool IsGrapplePulled { get; private set; }
+
+        public void ClearKnockback() => knockbackVelocity = Vector3.zero;
+
+        public bool BeginGrapplePull()
+        {
+            if (!IsOnNavMesh) return false;
+            EndDash();
+            Stop();
+            knockbackVelocity = Vector3.zero;
+            baseOffsetBeforePull = agent.baseOffset;
+            IsGrapplePulled = true;
+            GetComponent<Core.EnemyBase>()?.OnGrapplePulled();
+            return true;
+        }
+
+        public void EndGrapplePull()
+        {
+            if (!IsGrapplePulled) return;
+            if (agent != null) agent.baseOffset = baseOffsetBeforePull;
+            IsGrapplePulled = false;
+            if (IsOnNavMesh) agent.isStopped = false;
+        }
+
+        public void SetGrappleHop(float height)
+        {
+            if (IsGrapplePulled && agent != null)
+                agent.baseOffset = baseOffsetBeforePull + height;
+        }
+
+        public float GrapplePullTowards(Vector3 destination, float maxStep, float minimumDistance)
+        {
+            if (!IsGrapplePulled || !IsOnNavMesh) return 0f;
+            Vector3 delta = destination - transform.position;
+            delta.y = 0f;
+            float step = Mathf.Min(maxStep, Mathf.Max(0f, delta.magnitude - minimumDistance));
+            Vector3 before = transform.position;
+            if (step > 0f) agent.Move(delta.normalized * step);
+            return Vector3.ProjectOnPlane(transform.position - before, Vector3.up).magnitude;
+        }
+
+        public bool IsOnNavMesh => agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh;
 
         private void Awake()
         {
@@ -24,6 +66,7 @@ namespace Enemies.Combat
 
         private void Update()
         {
+            if (IsGrapplePulled) return;
             if (knockbackVelocity.sqrMagnitude < 0.0001f) return;
             float dt = Time.deltaTime;
             if (IsOnNavMesh) agent.Move(knockbackVelocity * dt);
@@ -32,7 +75,7 @@ namespace Enemies.Combat
 
         public bool MoveTo(Vector3 destination, float speed, float stoppingDistance)
         {
-            if (!IsOnNavMesh) return false;
+            if (!IsOnNavMesh || IsGrapplePulled) return false;
             agent.speed = speed;
             agent.stoppingDistance = stoppingDistance;
             agent.isStopped = false;
@@ -208,14 +251,14 @@ namespace Enemies.Combat
             if (IsOnNavMesh) agent.isStopped = false;
         }
 
-        public void FaceTarget(Transform target, float dt)
+        public void FaceTarget(Transform target, float dt, float turnSpeed = 720f)
         {
             if (target == null) return;
             Vector3 direction = target.position - transform.position;
             direction.y = 0f;
             if (direction.sqrMagnitude < 0.001f) return;
             transform.rotation = Quaternion.RotateTowards(transform.rotation,
-                Quaternion.LookRotation(direction), 720f * dt);
+                Quaternion.LookRotation(direction), turnSpeed * dt);
         }
     }
 }

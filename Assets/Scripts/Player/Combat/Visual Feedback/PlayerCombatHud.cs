@@ -9,13 +9,11 @@ namespace Player.Combat
     public sealed class PlayerCombatHud : MonoBehaviour
     {
         [SerializeField] private Color grappleColor = new Color(1f, 0.82f, 0.12f, 1f);
-        [SerializeField, Min(0.05f)] private float hitDuration = 0.38f;
         [SerializeField] private Canvas canvas;
         [SerializeField] private RectTransform root, grappleRoot, hitRoot;
         [SerializeField] private CanvasGroup grappleGroup, hitGroup;
         private GrappleController grapple;
-        private PlayerCombat combat;
-        private float grappleBlend, hitRemaining;
+        private float grappleBlend;
         private Transform hintedTarget;
         private float targetLostTime;
         [SerializeField] private UnityEngine.UI.Image crosshairImage, grappleImage, hitImage;
@@ -25,7 +23,6 @@ namespace Player.Combat
         private void Awake()
         {
             grapple = GetComponent<GrappleController>();
-            combat = GetComponent<PlayerCombat>();
             if (canvas == null)
             {
                 Debug.LogError("Combat HUD references are missing. Run Tools/Western Samurai/Bake Persistent Objects.", this);
@@ -111,20 +108,18 @@ namespace Player.Combat
 
         private void OnEnable()
         {
-            if (combat != null) combat.HitConfirmed += ShowHit;
+            // Keep previously baked hitmarker objects hidden after removal of hit confirmations.
+            if (hitGroup != null) hitGroup.alpha = 0;
             if (canvas != null) canvas.enabled = true;
         }
 
         private void OnDisable()
         {
-            if (combat != null) combat.HitConfirmed -= ShowHit;
-            hitRemaining = grappleBlend = 0;
+            grappleBlend = 0;
             hintedTarget = null;
             targetLostTime = 0;
             if (canvas != null) canvas.enabled = false;
         }
-
-        private void ShowHit() => hitRemaining = hitDuration;
 
         private void LateUpdate()
         {
@@ -159,10 +154,6 @@ namespace Player.Combat
             grappleRoot.localScale = Vector3.one * Mathf.LerpUnclamped(2.1f, 1, eased) * pulse;
             grappleRoot.localRotation = Quaternion.Euler(0, 0, Mathf.LerpUnclamped(-20, 45, eased));
 
-            hitRemaining = Mathf.Max(0, hitRemaining - dt);
-            float hitAge = Mathf.Max(0, hitDuration - hitRemaining);
-            hitGroup.alpha = hitAge < 0.12f ? 1 : Mathf.Clamp01(hitRemaining / Mathf.Max(0.05f, hitDuration - 0.12f));
-            hitRoot.localScale = Vector3.one * (1 + 0.5f * Mathf.Pow(Mathf.Clamp01(1 - hitAge / 0.1f), 2));
 
         }
 

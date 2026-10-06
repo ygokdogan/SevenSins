@@ -14,6 +14,10 @@ namespace Player.Combat
         [Tooltip("Leave empty when this attack has no telegraph animation.")]
         public string telegraphAnimation;
         
+        [Header("Defense & Attack Indicator")]
+        [Tooltip("Basic: block/parry. ParryOnly: bypasses held guard. DodgeOnly: bypasses guard and parry.")]
+        public global::Combat.AttackIndicators.AttackDefense defense;
+
         [Header("Damage & Impact")]
         public float damage = 25f;
         public float poiseDamage = 10f;

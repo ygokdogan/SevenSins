@@ -1,5 +1,6 @@
 using Input;
 using Enemies.Combat;
+using Enemies.Core;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -19,6 +20,13 @@ namespace Player.Movement
         [SerializeField] private LayerMask grappleLayers = ~0;
         [SerializeField, Min(0f)] private float predictionSphereCastRadius = 0.6f;
 
+        [Header("Enemy Grapple")]
+        [SerializeField, Min(0.01f)] private float holdToFlyTime = 0.2f;
+        [SerializeField, Min(1f)] private float enemyPullSpeed = 18f;
+        [SerializeField, Min(0.5f)] private float enemyStopDistance = 1.8f;
+
+        [SerializeField, Min(0f)] private float enemyPullHopHeight = 0.8f;
+
         [Header("Rope")]
         [SerializeField, Min(0.001f)] private float ropeWidth = 0.035f;
         [SerializeField] private Color ropeColor = new Color(0.35f, 0.19f, 0.07f, 1f);
@@ -32,9 +40,53 @@ namespace Player.Movement
         private Vector3 localAnchor;
         private Vector3 currentRopeEnd;
 
+        private EnemyBase anchorEnemy;
+        private bool pullingEnemy;
+        private bool awaitingEnemyGesture;
+        private float pullDuration;
+        private float pullElapsed;
+        private float pullDistance;
+        private float pullStarted;
+        private float pullBlockedTime;
+
+        public bool IsFlying => movement != null && movement.IsGrappling;
+        public bool IsPullingOrPending => pullingEnemy || awaitingEnemyGesture;
+
+        // Called by both movement and combat before either consumes action inputs.
+        public bool ProcessActionInput()
+        {
+            // Consume attacks before any cancellation or arrival logic; never queue them for release.
+            if (IsGrappling) input.UsePrimaryAttackInput();
+            if (IsFlying)
+            {
+                DiscardActionInputs();
+                return false;
+            }
+            if (IsPullingOrPending && (input.DashInput || input.JumpInput ||
+                input.BlockInput || input.IsBlockHeld || input.SheatheInput))
+            {
+                ReleaseGrapple();
+                input.UseGrappleInput();
+            }
+            return true;
+        }
+
+        public void DiscardActionInputs()
+        {
+            input.UsePrimaryAttackInput();
+            input.UseDashInput();
+            input.UseJumpInput();
+            input.ConsumeJumpRelease();
+            input.UseBlockInput();
+            input.UseSheatheInput();
+        }
+
+        public bool TryPerformAction() => !IsGrappling;
+
+        public bool HasEnemyAnchor => anchorEnemy != null;
         public Camera AimCamera => aimCamera;
 
-        public bool IsGrappling => movement != null && movement.IsGrappling;
+        public bool IsGrappling => awaitingEnemyGesture || pullingEnemy || (movement != null && movement.IsGrappling);
         public int AnchorLayerMask => anchorTransform != null ? 1 << anchorTransform.gameObject.layer : 0;
         public Vector3 AnchorPoint => TryGetAnchor(out Vector3 point) ? point : Vector3.zero;
         public bool HasPrediction { get; private set; }
@@ -67,26 +119,48 @@ namespace Player.Movement
                 ReleaseGrapple();
                 return;
             }
+            // Consume repeats before ticking: arrival this frame must not restart the lock.
+            if (HasEnemyAnchor && IsGrappling) input.UseGrappleInput();
+            ProcessActionInput();
+            if (awaitingEnemyGesture || pullingEnemy) TickEnemyPull();
+            else if (anchorEnemy != null && !movement.IsGrappling) ReleaseGrapple();
             if (!input.GrappleInput) return;
             input.UseGrappleInput();
-            if (IsGrappling) ReleaseGrapple();
-            else TryStartGrapple();
+            if (IsGrappling)
+            {
+                // Enemy grapples cannot be toggled off to repeatedly refresh their lock.
+                if (!HasEnemyAnchor) ReleaseGrapple();
+                return;
+            }
+            TryStartGrapple();
         }
 
         public bool TryStartGrapple()
         {
-            if (!isActiveAndEnabled || IsGrappling ||
+            if (!isActiveAndEnabled || !movement.CanMove || IsGrappling ||
                 !TryFindTarget(out RaycastHit hit, out Vector3 point)) return false;
-            anchorTransform = hit.collider.transform;
+            anchorEnemy = hit.collider.GetComponentInParent<EnemyBase>();
+            anchorTransform = anchorEnemy != null ? anchorEnemy.transform : hit.collider.transform;
             localAnchor = anchorTransform.InverseTransformPoint(point);
             GrappleAnchor marker = hit.collider.GetComponentInParent<GrappleAnchor>();
-            bool flyThrough = marker != null && marker.Arrival == GrappleArrival.FlyThrough;
-            if (!movement.TryStartGrapple(point, hit.normal, flyThrough))
+            bool flyThrough = anchorEnemy != null || (marker != null && marker.Arrival == GrappleArrival.FlyThrough);
+            if (anchorEnemy != null && !anchorEnemy.BeginGrappleLock(gameObject))
             {
+                anchorEnemy = null;
                 anchorTransform = null;
                 return false;
             }
+            awaitingEnemyGesture = anchorEnemy != null && anchorEnemy.CanBeGrapplePulled &&
+                anchorEnemy.Movement.IsOnNavMesh;
+            pullStarted = Time.time;
+            if (!awaitingEnemyGesture && !movement.TryStartGrapple(point, hit.normal, flyThrough))
+            {
+                ReleaseGrapple();
+                return false;
+            }
 
+            input.UsePrimaryAttackInput();
+            movement.Player.Combat?.CancelAttackForGrapple();
             currentRopeEnd = GetRopeOrigin();
             rope.enabled = true;
             rope.SetPosition(0, currentRopeEnd);
@@ -115,6 +189,7 @@ namespace Player.Movement
                 return;
             }
 
+            if (anchorEnemy != null) ReleaseGrapple();
             rope.enabled = false;
             HasPrediction = TryFindTarget(out RaycastHit predictedHit, out Vector3 predicted);
             PredictionEnemy = HasPrediction ? predictedHit.collider.GetComponentInParent<EnemyBase>() : null;
@@ -150,8 +225,9 @@ namespace Player.Movement
                 if (hit.distance >= nearest) continue;
                 GrappleAnchor marker = hit.collider.GetComponentInParent<GrappleAnchor>();
                 EnemyBase enemy = hit.collider.GetComponentInParent<EnemyBase>();
-                if (marker == null && (enemy == null || !enemy.isActiveAndEnabled || hit.collider.isTrigger)) continue;
-                Vector3 candidate = marker != null ? marker.GetAttachmentPoint(hit.point) : hit.point;
+                if (enemy != null && (!enemy.isActiveAndEnabled || hit.collider.isTrigger)) continue;
+                if (marker == null && enemy == null) continue;
+                Vector3 candidate = enemy != null ? enemy.GrappleCenter : marker.GetAttachmentPoint(hit.point);
                 Vector3 delta = candidate - aimCamera.transform.position;
                 float distance = delta.magnitude;
                 if (distance < 0.01f || distance > maxDistance || !IsVisible(candidate, hit.collider)) continue;
@@ -182,12 +258,63 @@ namespace Player.Movement
         {
             point = default;
             if (anchorTransform == null || !anchorTransform.gameObject.activeInHierarchy) return false;
-            point = anchorTransform.TransformPoint(localAnchor);
+            if (anchorEnemy != null && !anchorEnemy.isActiveAndEnabled) return false;
+            point = anchorEnemy != null ? anchorEnemy.GrappleCenter : anchorTransform.TransformPoint(localAnchor);
             return true;
+        }
+
+        private void TickEnemyPull()
+        {
+            if (anchorEnemy == null || !anchorEnemy.isActiveAndEnabled || !movement.CanMove ||
+                !anchorEnemy.Movement.IsOnNavMesh || Time.time - pullStarted >= movement.config.Grapple.Timeout)
+            {
+                ReleaseGrapple();
+                return;
+            }
+            if (awaitingEnemyGesture)
+            {
+                // No enemy displacement until release distinguishes a tap from a hold.
+                if (input.IsGrappleHeld)
+                {
+                    if (Time.time - pullStarted < holdToFlyTime) return;
+                    awaitingEnemyGesture = false;
+                    if (!movement.TryStartGrapple(anchorEnemy.GrappleCenter, Vector3.zero, true))
+                        ReleaseGrapple();
+                    return;
+                }
+                awaitingEnemyGesture = false;
+                pullingEnemy = anchorEnemy.Movement.BeginGrapplePull();
+                if (!pullingEnemy)
+                {
+                    ReleaseGrapple();
+                    return;
+                }
+                Vector3 initialDelta = anchorEnemy.transform.position - transform.position;
+                initialDelta.y = 0f;
+                pullDistance = Mathf.Max(0f, initialDelta.magnitude - enemyStopDistance);
+                pullDuration = Mathf.Max(0.35f, pullDistance / enemyPullSpeed);
+                pullElapsed = pullBlockedTime = 0f;
+            }
+            float previous = Mathf.Clamp01(pullElapsed / pullDuration);
+            pullElapsed += Time.deltaTime;
+            float progress = Mathf.Clamp01(pullElapsed / pullDuration);
+            float step = pullDistance * (Mathf.SmoothStep(0f, 1f, progress) -
+                Mathf.SmoothStep(0f, 1f, previous));
+            float moved = anchorEnemy.Movement.GrapplePullTowards(transform.position,
+                step, enemyStopDistance);
+            float height = Mathf.Min(enemyPullHopHeight, pullDistance * 0.25f);
+            anchorEnemy.Movement.SetGrappleHop(height * 4f * progress * (1f - progress));
+            pullBlockedTime = step > 0.002f && moved < step * 0.1f
+                ? pullBlockedTime + Time.deltaTime : 0f;
+            if (progress >= 1f || pullBlockedTime > 0.3f) ReleaseGrapple();
         }
 
         public void ReleaseGrapple()
         {
+            pullingEnemy = false;
+            awaitingEnemyGesture = false;
+            if (anchorEnemy != null) anchorEnemy.EndGrappleLock();
+            anchorEnemy = null;
             if (rope != null) rope.enabled = false;
             if (movement != null) movement.StopGrapple();
             anchorTransform = null;

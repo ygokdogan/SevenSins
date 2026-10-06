@@ -23,9 +23,10 @@ namespace Player.Movement.States
         {
             if (!movement.Player.Input.DashInput) return false;
             movement.Player.Input.UseDashInput();
-            if (!movement.CanMove || Time.time < nextDashTime ||
+            if (movement.IsGrappling || !movement.CanMove || Time.time < nextDashTime ||
                 (airborne && !airDashAvailable)) return false;
 
+            movement.Player.GrappleController?.TryPerformAction();
             if (airborne) airDashAvailable = false;
             movement.ChangeState(this);
             return true;

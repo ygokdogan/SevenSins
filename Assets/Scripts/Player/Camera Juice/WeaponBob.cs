@@ -23,6 +23,13 @@ namespace Player.Camera_Juice
         [SerializeField, Min(0f)] private float landingDepth = 0.035f;
         [SerializeField, Min(0.01f)] private float landingDuration = 0.22f;
 
+        [Header("Blocked Strike")]
+        [SerializeField, Min(0.01f)] private float blockedRecoilDuration = 0.2f;
+        [SerializeField, Min(0f)] private float blockedRecoilDistance = 0.075f;
+        [SerializeField] private float blockedRecoilPitch = -9f;
+        private float blockedRecoilTime;
+        public void PlayBlockedRecoil() => blockedRecoilTime = blockedRecoilDuration;
+
         private PlayerManager player;
         private Vector3 restPosition;
         private Quaternion restRotation;
@@ -55,6 +62,7 @@ namespace Player.Camera_Juice
             transform.localPosition = restPosition;
             transform.localRotation = restRotation;
             offset = Vector3.zero;
+            blockedRecoilTime = 0f;
             phase = idlePhase = roll = landingTime = 0f;
         }
 
@@ -112,8 +120,15 @@ namespace Player.Camera_Juice
             float targetRoll = Mathf.Sin(phase * 0.5f) * rollAmount * weight
                 + Mathf.Sin(idlePhase * 0.5f) * idleRollAmount * idleWeight;
             roll = Mathf.Lerp(roll, targetRoll, blend);
-            transform.localPosition = restPosition + offset;
-            transform.localRotation = restRotation * Quaternion.Euler(0f, 0f, roll);
+            float recoil = 0f;
+            if (blockedRecoilTime > 0f)
+            {
+                blockedRecoilTime = Mathf.Max(0f, blockedRecoilTime - Time.unscaledDeltaTime);
+                float t = 1f - blockedRecoilTime / blockedRecoilDuration;
+                recoil = t < 0.2f ? t / 0.2f : Mathf.Pow((1f - t) / 0.8f, 2f);
+            }
+            transform.localPosition = restPosition + offset + Vector3.back * (recoil * blockedRecoilDistance);
+            transform.localRotation = restRotation * Quaternion.Euler(recoil * blockedRecoilPitch, 0f, roll);
         }
     }
 }

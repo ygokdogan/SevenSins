@@ -16,6 +16,7 @@ namespace Player.Combat.States
         private Vector3 lungeDirection;
         private float currentLungeSpeed;
         private bool isStationaryLunge;
+        public bool WasBlocked { get; private set; }
         private readonly HashSet<Collider> hitTargets = new();
 
         public AttackData CurrentAttack { get; private set; }
@@ -33,7 +34,8 @@ namespace Player.Combat.States
 
         public bool Begin(PlayerCombat combat, AttackData attack)
         {
-            if (attack == null) return false;
+            if (attack == null || (player.GrappleController != null &&
+                !player.GrappleController.TryPerformAction())) return false;
             CurrentAttack = attack;
             if (combat.CurrentState == this) Enter(combat);
             else combat.ChangeState(this);
@@ -43,6 +45,7 @@ namespace Player.Combat.States
         public override void Enter(PlayerCombat combat)
         {
             AttackSequence++;
+            WasBlocked = false;
             player.Movement.Restrictions.RemoveAll(this);
             currentLungeSpeed = 0f;
             isStationaryLunge = false;
@@ -64,6 +67,7 @@ namespace Player.Combat.States
 
         public override void OnLungeTriggered()
         {
+            if (WasBlocked || player.Movement.IsGrappling) return;
             if (CurrentAttack == null) return;
 
             bool isStandingStill = player.Input.MoveInput.sqrMagnitude < 0.01f;
@@ -102,7 +106,7 @@ namespace Player.Combat.States
                 }
             }
 
-            if (comboWindowOpen && (player.Input.BlockInput || player.Input.IsBlockHeld))
+            if (!player.Movement.IsGrappling && comboWindowOpen && (player.Input.BlockInput || player.Input.IsBlockHeld))
             {
                 combat.ChangeState(combat.BlockState);
                 return;
@@ -127,10 +131,23 @@ namespace Player.Combat.States
             CurrentAttack = null;
         }
 
+        public bool DeflectOnBlock()
+        {
+            if (WasBlocked || !IsAttackWindowOpen) return false;
+            WasBlocked = true;
+            currentLungeSpeed = 0f;
+            isStationaryLunge = false;
+            attackWindowOpen = false;
+            player.Movement.Restrictions.Remove(this, MovementRestriction.Move);
+            player.Movement.StopPlanarMovement();
+            return true;
+        }
+
         public override void OnComboWindowOpened() => comboWindowOpen = true;
         public override void OnComboWindowClosed() => comboWindowOpen = false;
         public override void OnAttackWindowOpened()
         {
+            if (WasBlocked) return;
             attackWindowOpen = true;
             AttackWindowSequence++;
         }
@@ -139,6 +156,13 @@ namespace Player.Combat.States
 
         private void HandleAttackLunge(float deltaTime)
         {
+            if (player.Movement.IsGrappling)
+            {
+                currentLungeSpeed = 0f;
+                isStationaryLunge = false;
+                player.Movement.Restrictions.Remove(this, MovementRestriction.Move);
+                return;
+            }
             if (isStationaryLunge)
             {
                 if (player.Input.MoveInput.sqrMagnitude > 0.01f || currentLungeSpeed <= 0.01f)
@@ -211,7 +235,7 @@ namespace Player.Combat.States
                         };
 
                         damageable.TakeHit(info);
-                        if (damage > 0f) combat.NotifyHitConfirmed();
+                        if (WasBlocked) return;
 
                         if (attack != null && attack.hitVfxPrefab != null)
                         {

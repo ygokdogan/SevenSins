@@ -13,7 +13,7 @@ namespace Player.Combat.States
                 return;
             }
 
-            if (player.Input.BlockInput || player.Input.IsBlockHeld)
+            if (!player.Movement.IsGrappling && (player.Input.BlockInput || player.Input.IsBlockHeld))
             {
                 combat.ChangeState(combat.BlockState);
                 return;

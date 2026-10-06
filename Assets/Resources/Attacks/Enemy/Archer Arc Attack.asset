@@ -16,6 +16,7 @@ MonoBehaviour:
   crossFadeDuration: 0.1
   telegraphDuration: 0.6
   telegraphAnimation: telegraph_shoot
+  defense: 2
   damage: 25
   poiseDamage: 10
   hitStopDuration: 0.05
