@@ -1,4 +1,5 @@
 using UnityEngine;
+using Utilities;
 
 namespace Player.Movement.States
 {
@@ -6,6 +7,8 @@ namespace Player.Movement.States
     {
         private PlayerMovementConfig.GroundSettings groundConfig;
         private PlayerMovementConfig.JumpSettings jumpConfig;
+
+        private float targetSpeed;
 
         public override void Initialize(PlayerMovement movement)
         {
@@ -25,7 +28,10 @@ namespace Player.Movement.States
         public void ConsumeCoyoteTime() => coyoteTimer = 0f;
         public void SetMomentumPreservation(bool preserve) => PreserveMomentum = preserve;
 
-        public override void Enter(PlayerMovement movement) { }
+        public override void Enter(PlayerMovement movement)
+        {
+            targetSpeed = movement.CurrentMaxSpeed;
+        }
 
         public override void Tick(PlayerMovement movement, float dt)
         {
@@ -36,7 +42,7 @@ namespace Player.Movement.States
             if (PreserveMomentum)
                 UpdateMomentumAirControl(movement, dt);
             else
-                MovementUtility.UpdatePlanarVelocity(movement, dt, groundConfig.AirControl);
+                MovementUtility.UpdatePlanarVelocity(movement, targetSpeed, dt, groundConfig.AirControl);
 
             coyoteTimer -= dt;
             if (movement.CanMove && movement.Player.Input.JumpInput && coyoteTimer > 0f)
@@ -81,8 +87,8 @@ namespace Player.Movement.States
             if (amount < 0.001f) return;
 
             wish /= amount;
-            float targetSpeed = groundConfig.SprintSpeed * player.SpeedMultiplier;
-            float room = Mathf.Max(0f, targetSpeed - Vector3.Dot(player.Velocity, wish));
+            float speed = groundConfig.SprintSpeed * player.SpeedMultiplier;
+            float room = Mathf.Max(0f, speed - Vector3.Dot(player.Velocity, wish));
             player.Velocity += wish * Mathf.Min(room, groundConfig.Acceleration * groundConfig.AirControl * amount * dt);
         }
     }

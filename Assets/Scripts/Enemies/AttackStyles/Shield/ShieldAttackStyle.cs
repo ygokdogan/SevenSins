@@ -1,44 +1,84 @@
 using Combat.AttackIndicators;
-using Enemies.Combat.States;
 using Core;
+using Enemies.Combat;
+using Enemies.Combat.States;
+using Enemies.Core;
+using Enemies.Types.Shield;
+using Player.Combat;
 using UnityEngine;
 using UnityEngine.Scripting.APIUpdating;
+using Utilities;
 
-namespace Enemies.Combat
+namespace Enemies.AttackStyles.Shield
 {
     [MovedFrom(true, "Enemies.Combat", "Assembly-CSharp", "ShieldBearerAttackStyle")]
     public sealed class ShieldAttackStyle : EnemyAttackStyle
     {
-        [SerializeField, Min(0.1f)] private float bashRange = 2.8f;
-        [SerializeField, Min(0f)] private float telegraphDuration = 0.5f;
-        [SerializeField, Min(0f)] private float bashSpeed = 8f;
-        [SerializeField, Min(0f)] private float bashDamage = 12f;
-        [SerializeField, Min(0f)] private float bashPush = 12f;
-        [SerializeField, Min(0f)] private float swordDamage = 8f;
-        [SerializeField] private AttackDefense bashDefense = AttackDefense.ParryOnly;
-        [SerializeField] private AttackDefense swordDefense = AttackDefense.Basic;
-        public float TelegraphDuration => telegraphDuration;
-        public float BashSpeed => bashSpeed;
-        public float BashDamage => bashDamage;
-        public float BashPush => bashPush;
-        public float SwordDamage => swordDamage;
-        public AttackDefense BashDefense => bashDefense;
-        public AttackDefense SwordDefense => swordDefense;
+        public AttackData bashAttack;
+        public AttackData swordAttack;
 
-        public override bool Supports(Core.EnemyBase enemy) => enemy is EnemyShield;
+        public float bashSpeed = 8f;
+        public float bashDuration = 0.28f;
+        public float bashDashDistance = 2.1f;
+        [Range(0.5f, 1f)] public float bashStandRatio = 0.7f;
+        
+        public float swordLungeDistance = 3f;
+        public float lungeMaxTime = 0.6f;
+        public float lungeSpeed = 12f;
 
-        public override float DesiredDistance(Core.EnemyBase ctx) => 1.5f;
-        public override float EngagementRange(Core.EnemyBase ctx) => bashRange;
-        protected override bool CanStartAttackInternal(Core.EnemyBase ctx)
+        public BoxCollider bashHitCollider;
+        public BoxCollider hitCollider;
+        public LayerMask hittableLayers;
+        
+        [Range(0.5f, 1f)] public float standRatio = 0.95f;
+
+        public float animationTimeout = 1.5f;
+        
+        private bool Broken(EnemyBase ctx) => ctx is EnemyShield s && s.ShieldBroken;
+        private BoxCollider ActiveBox(EnemyBase ctx) => Broken(ctx) ? hitCollider : bashHitCollider;
+        
+        private float Reach(EnemyBase ctx)
         {
-            if (ctx.Perception.Target == null || ctx.HorizontalDistance > bashRange) return false;
+            float reach = MeleeHitUtility.ForwardReach(ActiveBox(ctx), ctx.transform);
+            var tc = ctx.Perception.TargetCollider;
+            if (tc != null) reach += Mathf.Max(tc.bounds.extents.x, tc.bounds.extents.z);
+            return Broken(ctx) ? reach : reach * bashStandRatio + bashDashDistance;
+        }
+        
+        public override float DesiredDistance(EnemyBase ctx) =>
+            Broken(ctx) ? AttackRange(ctx) * standRatio : Reach(ctx) * standRatio;
+        public override float EngagementRange(EnemyBase ctx) => Reach(ctx) * standRatio;
+
+        protected override bool CanStartAttackInternal(EnemyBase ctx)
+        {
+            var target = ctx.Perception.TargetCollider;
+            if (ctx.Perception.Target == null || target == null) return false;
+            
             Vector3 delta = ctx.Perception.Target.position - ctx.transform.position;
             delta.y = 0f;
-            return Vector3.Dot(ctx.transform.forward, delta.normalized) > 0.8f;
+            if (Vector3.Dot(ctx.transform.forward, delta.normalized) < 0.8f) return false;
+            
+            if (Broken(ctx)) return hitCollider != null &&
+                (MeleeHitUtility.IsOverlapping(hitCollider, target) ||
+                 MeleeHitUtility.BoxGap(hitCollider, target) * standRatio <= swordLungeDistance);
+            return ctx.HorizontalDistance <= Reach(ctx);
         }
-        public override IState<Core.EnemyBase> CreateState() => new ShieldAttackState(this);
-        public override void FinishAttack(Core.EnemyBase ctx)
-        { ScheduleNextAttack(); ctx.RequestTransition(ctx.States.Engage); }
+        
+        public override IState<EnemyBase> CreateState() => new ShieldAttackState(this);
+        public override void FinishAttack(EnemyBase ctx)
+        { 
+            ScheduleNextAttack();
+            ctx.RequestTransition(ctx.States.Engage);
+        }
+        
+        public float AttackRange(EnemyBase ctx)
+        {
+            float reach = MeleeHitUtility.ForwardReach(hitCollider, ctx.transform);
+            var target = ctx.Perception.TargetCollider;
+
+            float targetRadius = target != null ? Mathf.Max(target.bounds.extents.x, target.bounds.extents.z) : 0f;
+            return reach + targetRadius;
+        }
 
     }
 }

@@ -1,9 +1,9 @@
-using Enemies.Combat.States;
+using Enemies.Combat;
 using Enemies.Core;
 using Enemies.States;
 using UnityEngine;
 
-namespace Enemies.Combat
+namespace Enemies.Types.Archer
 {
     [RequireComponent(typeof(ArcherRangedAttackStyle))]
     public class EnemyArcher : Core.EnemyBase

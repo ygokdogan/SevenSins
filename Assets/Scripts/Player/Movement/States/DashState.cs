@@ -23,7 +23,7 @@ namespace Player.Movement.States
         {
             if (!movement.Player.Input.DashInput) return false;
             movement.Player.Input.UseDashInput();
-            if (movement.IsGrappling || !movement.CanMove || Time.time < nextDashTime ||
+            if (movement.IsGrappling || !movement.CanDash || Time.time < nextDashTime ||
                 (airborne && !airDashAvailable)) return false;
 
             movement.Player.GrappleController?.TryPerformAction();
@@ -57,7 +57,7 @@ namespace Player.Movement.States
 
         public override void Tick(PlayerMovement movement, float dt)
         {
-            if (!movement.CanMove)
+            if (!movement.CanDash)
             {
                 movement.ResumeLocomotion();
                 return;

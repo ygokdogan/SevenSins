@@ -195,6 +195,9 @@ namespace Enemies.Combat
         public void EndDash()
         {
             if (!dashing) return;
+            // Parry knockback can resume the agent immediately after this call.
+            // Discard dash momentum before restoring its normal acceleration.
+            if (IsOnNavMesh) agent.velocity = Vector3.zero;
             if (agent != null) agent.acceleration = accelerationBeforeDash;
             dashing = false;
             Stop();

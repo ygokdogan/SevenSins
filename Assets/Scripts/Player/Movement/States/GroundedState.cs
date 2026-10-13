@@ -1,14 +1,16 @@
-using Player.Movement.States;
 using UnityEngine;
+using Utilities;
 
-namespace Player.Movement
+namespace Player.Movement.States
 {
     public sealed class GroundedState : PlayerMovementState
     {
+        private PlayerMovementConfig.GroundSettings groundConfig;
         private PlayerMovementConfig.JumpSettings jumpConfig;
 
         public override void Initialize(PlayerMovement movement)
         {
+            groundConfig = movement.config.Ground;
             jumpConfig = movement.config.Jump;
         }
 
@@ -31,8 +33,8 @@ namespace Player.Movement
         public override void Tick(PlayerMovement movement, float dt)
         {
             if (movement.DashState.TryStart(movement, airborne: false)) return;
-
-            MovementUtility.UpdatePlanarVelocity(movement, dt, 1f);
+            
+            MovementUtility.UpdatePlanarVelocity(movement, movement.CurrentMaxSpeed, dt, 1f);
             if (movement.CanMove && movement.Player.Input.JumpInput)
             {
                 MovementUtility.StartJump(movement);

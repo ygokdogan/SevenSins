@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Combat;
 using Player.Movement;
 using UnityEngine;
+using Utilities;
 
 namespace Player.Combat.States
 {
@@ -17,7 +18,7 @@ namespace Player.Combat.States
         private float currentLungeSpeed;
         private bool isStationaryLunge;
         public bool WasBlocked { get; private set; }
-        private readonly HashSet<Collider> hitTargets = new();
+        private readonly HashSet<IDamageable> hitTargets = new();
 
         public AttackData CurrentAttack { get; private set; }
         public bool IsAttackWindowOpen => attackWindowOpen && !animationFinished;
@@ -195,66 +196,16 @@ namespace Player.Combat.States
         {
             if (!attackWindowOpen) return;
 
-            Vector3 center = hitCollider.transform.TransformPoint(hitCollider.center);
-            Vector3 halfExtents = Vector3.Scale(hitCollider.size, hitCollider.transform.lossyScale) * 0.5f;
-            Quaternion orientation = hitCollider.transform.rotation;
-            
-            Collider[] hits = Physics.OverlapBox(center, halfExtents, orientation, hittableLayers);
-
             var attack = CurrentAttack;
-            float damage = attack != null ? attack.damage : 25f;
-            float poiseDamage = attack != null ? attack.poiseDamage : 10f;
-            float hitStopDuration = attack != null ? attack.hitStopDuration : 0.05f;
-            float impactMultiplier = attack != null ? attack.impactMultiplier : 1f;
-            float knockbackForce = attack != null ? attack.knockbackForce : 6f;
-
-            foreach (var hit in hits)
+            MeleeHitUtility.Hit(hitCollider, hittableLayers, attack.ToHitInfo(), combat.gameObject, hitTargets, info =>
             {
-                if (hitTargets.Add(hit))
-                {
-                    if (hit.TryGetComponent(out IDamageable damageable))
-                    {
-                        Vector3 hitPoint = HitPointUtility.OnTargetSurface(hit, combat.transform.position, out Vector3 hitNormal);
-                        Vector3 hitDir = hit.transform.position - combat.transform.position;
-                        hitDir.y = 0f;
-                        if (hitDir.sqrMagnitude > 0.001f)
-                            hitDir.Normalize();
-                        else
-                            hitDir = combat.transform.forward;
-
-                        HitInfo info = new HitInfo
-                        {
-                            damage = damage,
-                            poiseDamage = poiseDamage,
-                            impactMultiplier = impactMultiplier,
-                            knockbackForce = knockbackForce,
-                            hitPoint = hitPoint,
-                            hitNormal = hitNormal,
-                            hitDirection = hitDir,
-                            attacker = combat.transform.gameObject
-                        };
-
-                        damageable.TakeHit(info);
-                        if (WasBlocked) return;
-
-                        if (attack != null && attack.hitVfxPrefab != null)
-                        {
-                            Vector3 vfxPosition = hitPoint + hitNormal * 0.08f;
-                            GameObject vfxObject = Object.Instantiate(attack.hitVfxPrefab, vfxPosition,
-                                Quaternion.LookRotation(hitNormal));
-                            foreach (ParticleSystem particles in vfxObject.GetComponentsInChildren<ParticleSystem>())
-                            {
-                                var main = particles.main;
-                                main.useUnscaledTime = true;
-                            }
-                        }
-
-                        player.Camera?.Shake(0.22f, 0.1f);
-                        combat.TriggerHitStop(hitStopDuration);
-                        if (combat.CurrentState != this) return;
-                    }
-                }
-            }
+                if (WasBlocked) return false;
+                
+                MeleeHitUtility.SpawnVfx(attack?.hitVfxPrefab, info, true);
+                player.Camera?.Shake(0.22f, 0.1f);
+                combat.TriggerHitStop(attack != null ? attack.hitStopDuration : 0.05f);
+                return combat.CurrentState == this;
+            });
         }
     }
 }

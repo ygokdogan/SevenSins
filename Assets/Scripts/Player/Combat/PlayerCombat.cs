@@ -4,6 +4,7 @@ using Combat.AttackIndicators;
 using Core;
 using Enemies.Combat;
 using Enemies.Core;
+using Player.CameraFeel;
 using Player.Combat.States;
 using Player.Combat.VIsual_Feedback;
 using UnityEngine;
@@ -19,7 +20,7 @@ namespace Player.Combat
         [Header("Blocked Strike Feedback")]
         [SerializeField, Min(0f)] private float blockedStrikeKnockback = 2.2f;
         [SerializeField, Min(0f)] private float blockedStrikeShake = 0.35f;
-        private global::Player.Camera_Juice.WeaponBob weaponBob;
+        private WeaponBob weaponBob;
 
         [Header("Hit Detection")]
         [SerializeField] private BoxCollider hitCollider;
@@ -69,7 +70,7 @@ namespace Player.Combat
             cameraManager = Player.Camera;
             guardImpactVisual = GetComponentInChildren<GuardImpactVisual>();
             hitFeedback = GetComponentInChildren<PlayerHitFeedback>();
-            weaponBob = GetComponentInChildren<global::Player.Camera_Juice.WeaponBob>();
+            weaponBob = GetComponentInChildren<WeaponBob>();
 
             IdleState = Player.GetCombatState<CombatIdleState>();
             AttackState = Player.GetCombatState<CombatAttackState>();

@@ -1,0 +1,9 @@
+{
+  "reference_unchanged": true,
+  "hand_object": "ZS_Hand_R",
+  "weapon_parent": "ZS_Weapon_Chain",
+  "chain_links": 8,
+  "mesh_objects": 17,
+  "vertices": 1496,
+  "triangles": 2928
+}

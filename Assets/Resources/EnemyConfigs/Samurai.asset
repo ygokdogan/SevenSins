@@ -29,6 +29,8 @@ MonoBehaviour:
   walkSpeed: 4
   retreatDistance: 2
   retreatDuration: 0.45
+  canBeGrapplePulled: 1
   maxHealth: 100
   parryStunDuration: 2
+  stunnedDamageMultiplier: 2
   parryKnockbackForce: 10

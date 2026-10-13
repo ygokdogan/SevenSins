@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Input
 {
@@ -7,26 +8,31 @@ namespace Input
     {
         private PlayerInputActions actions;
 
+        public bool IsGamepad { get; private set; }
+
         [Tooltip("How long a jump press remains valid while waiting to land.")]
         [Min(0f)] public float inputHoldTime = 0.12f;
-        
+
         public Vector2 MoveInput { get; private set; }
         public Vector2 LookInput { get; private set; }
+
+        public bool LockOnInput { get; private set; }
+        private float lockOnInputStartTime = -2f;
         public bool SprintInput { get; private set; }
         public bool DashInput { get; private set; }
         private float dashInputStartTime = -2f;
-        
+
         public bool JumpInput { get; private set; }
         public bool JumpInputReleased { get; private set; }
         public bool IsJumpHeld { get; private set; }
         private float jumpInputStartTime = -2f;
-        
+
         public bool SheatheInput { get; private set; }
         private float sheatheInputStartTime = -2f;
-        
+
         public bool PrimaryAttackInput { get; private set; }
         private float primaryAttackInputStartTime = -2f;
-        
+
         public bool BlockInput { get; private set; }
         public bool IsBlockHeld { get; private set; }
         private float blockInputStartTime = -2f;
@@ -39,13 +45,19 @@ namespace Input
         private void Awake()
         {
             actions = new PlayerInputActions();
-            
+
             actions.Player.Movement.performed += ctx => MoveInput = ctx.ReadValue<Vector2>();
             actions.Player.Movement.canceled += ctx => MoveInput = Vector2.zero;
 
             actions.Player.Look.performed += ctx => LookInput = ctx.ReadValue<Vector2>();
             actions.Player.Look.canceled += ctx => LookInput = Vector2.zero;
-            
+
+            actions.Player.LockOn.performed += ctx =>
+            {
+                LockOnInput = true;
+                lockOnInputStartTime = Time.time;
+            };
+
             actions.Player.Sprint.performed += ctx =>
             {
                 SprintInput = true;
@@ -66,7 +78,7 @@ namespace Input
                 IsJumpHeld = false;
                 JumpInputReleased = true;
             };
-            
+
             actions.Player.Sheathe.performed += ctx =>
             {
                 SheatheInput = true;
@@ -101,6 +113,8 @@ namespace Input
 
         private void Update()
         {
+            if (LockOnInput && Time.time >= lockOnInputStartTime + inputHoldTime)
+                LockOnInput = false;
             JumpBuffer();
             SheatheBuffer();
             PrimaryAttackBuffer();
@@ -155,6 +169,7 @@ namespace Input
                 DashInput = false;
         }
 
+        public void UseLockOnInput() => LockOnInput = false;
         public void UseSprintInput() => SprintInput = false;
         public void UseDashInput() => DashInput = false;
         public void UseJumpInput() => JumpInput = false;
@@ -162,10 +177,30 @@ namespace Input
         public void UsePrimaryAttackInput() => PrimaryAttackInput = false;
         public void UseBlockInput() => BlockInput = false;
         public void UseGrappleInput() => GrappleInput = false;
-        
+
         public void ConsumeJumpRelease() => JumpInputReleased = false;
-        
-        private void OnEnable() => actions.Enable();
-        private void OnDisable() => actions.Disable();
+
+        private void OnEnable()
+        {
+            actions.Enable();
+            InputSystem.onActionChange += OnActionChange;
+        }
+
+        private void OnDisable()
+        {
+            actions.Disable();
+            LockOnInput = false;
+            InputSystem.onActionChange -= OnActionChange;
+        }
+
+        private void OnActionChange(object obj, InputActionChange change)
+        {
+            if (change != InputActionChange.ActionPerformed) return;
+
+            var action = (InputAction)obj;
+            if (action.actionMap != actions.Player.Get()) return;
+
+            IsGamepad = action.activeControl.device is Gamepad;
+        }
     }
 }

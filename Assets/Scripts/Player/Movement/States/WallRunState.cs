@@ -1,3 +1,4 @@
+using Player.CameraFeel;
 using UnityEngine;
 
 namespace Player.Movement.States
@@ -104,7 +105,10 @@ namespace Player.Movement.States
             WallNormal = wallNormal;
             Vector3 desiredDirection = GetRunDirection(movement, wallNormal);
             if (Vector3.Dot(desiredDirection, runDirection) < 0f) desiredDirection = runDirection;
-            runDirection = Vector3.Slerp(runDirection, desiredDirection, 12f * dt).normalized;
+
+            float t = 1f - Mathf.Exp(-12f * dt);
+            runDirection = Vector3.Slerp(runDirection, desiredDirection, t);
+            runDirection = Vector3.ProjectOnPlane(runDirection, wallNormal).normalized;
 
             if (movement.Player.Input.JumpInput)
             {
@@ -144,17 +148,16 @@ namespace Player.Movement.States
 
         public override void Exit(PlayerMovement movement) { }
 
-        private bool FindCurrentWall(PlayerMovement player, out Vector3 normal, out RaycastHit hit)
+        private bool FindCurrentWall(PlayerMovement movement, out Vector3 normal, out RaycastHit hit)
         {
-            float radius = Mathf.Max(0.05f, player.Player.Controller.radius * 0.65f);
-            if (Physics.SphereCast(player.Player.Controller.bounds.center, radius, -WallNormal,
-                out hit, config.CheckDistance, wallLayers, QueryTriggerInteraction.Ignore)
-                && IsRunnable(hit.normal) && Vector3.Dot(hit.normal, WallNormal) > 0.5f)
+            var cc = movement.Player.Controller;
+            if (Physics.Raycast(cc.bounds.center, -WallNormal, out hit, cc.radius + config.CheckDistance, wallLayers, QueryTriggerInteraction.Ignore)
+                && IsRunnable(hit.normal) && Vector3.Dot(hit.normal, WallNormal) > 0.8f)
             {
                 normal = Vector3.ProjectOnPlane(hit.normal, Vector3.up).normalized;
                 return true;
             }
-
+            
             normal = Vector3.zero;
             hit = default;
             return false;
@@ -185,12 +188,14 @@ namespace Player.Movement.States
 
         private bool TryFindWall(PlayerMovement player, out Vector3 wallNormal, out RaycastHit wallHit)
         {
-            Vector3 center = player.Player.Controller.bounds.center;
-            float radius = Mathf.Max(0.05f, player.Player.Controller.radius * 0.65f);
-            bool leftHit = Physics.SphereCast(center, radius, -player.transform.right, out RaycastHit left,
-                config.CheckDistance, config.Layers, QueryTriggerInteraction.Ignore) && IsRunnable(left.normal);
-            bool rightHit = Physics.SphereCast(center, radius, player.transform.right, out RaycastHit right,
-                config.CheckDistance, config.Layers, QueryTriggerInteraction.Ignore) && IsRunnable(right.normal);
+            var cc = player.Player.Controller;
+            Vector3 center = cc.bounds.center;
+            float dist = cc.radius + config.CheckDistance;
+
+            bool leftHit = Physics.Raycast(center, -player.transform.right, out RaycastHit left, dist,
+                config.Layers, QueryTriggerInteraction.Ignore) && IsRunnable(left.normal);
+            bool rightHit = Physics.Raycast(center, player.transform.right, out RaycastHit right, dist,
+                config.Layers, QueryTriggerInteraction.Ignore) && IsRunnable(right.normal);
 
             if (!leftHit && !rightHit)
             {

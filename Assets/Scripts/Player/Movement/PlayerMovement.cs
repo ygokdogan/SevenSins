@@ -23,6 +23,7 @@ namespace Player.Movement
 
         public bool CanMove => Restrictions.CanMove;
         public bool CanSprint => Restrictions.CanSprint;
+        public bool CanDash => Restrictions.CanDash;
         public float SpeedMultiplier => Restrictions.SpeedMultiplier;
 
         public bool IsSprinting => CanSprint && Player.Input.SprintInput && Velocity.sqrMagnitude > 0.01f;

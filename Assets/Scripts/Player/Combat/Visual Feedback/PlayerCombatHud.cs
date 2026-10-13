@@ -1,7 +1,7 @@
 using Player.Movement;
 using UnityEngine;
 
-namespace Player.Combat
+namespace Player.Combat.Visual_Feedback
 {
     // Lightweight, non-interactive overlay; all animation uses unscaled time for hit-stop.
     [DisallowMultipleComponent]

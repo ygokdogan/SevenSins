@@ -22,7 +22,8 @@ namespace Player.Movement
 
         [Header("Enemy Grapple")]
         [SerializeField, Min(0.01f)] private float holdToFlyTime = 0.2f;
-        [SerializeField, Min(1f)] private float enemyPullSpeed = 18f;
+        [Tooltip("Enemy pull travel time, independent of distance. Starts when the grapple tap is released.")]
+        [SerializeField, Min(0.05f)] private float enemyPullDuration = 0.25f;
         [SerializeField, Min(0.5f)] private float enemyStopDistance = 1.8f;
 
         [SerializeField, Min(0f)] private float enemyPullHopHeight = 0.8f;
@@ -292,14 +293,19 @@ namespace Player.Movement
                 Vector3 initialDelta = anchorEnemy.transform.position - transform.position;
                 initialDelta.y = 0f;
                 pullDistance = Mathf.Max(0f, initialDelta.magnitude - enemyStopDistance);
-                pullDuration = Mathf.Max(0.35f, pullDistance / enemyPullSpeed);
+                pullDuration = Mathf.Max(0.05f, enemyPullDuration);
                 pullElapsed = pullBlockedTime = 0f;
             }
             float previous = Mathf.Clamp01(pullElapsed / pullDuration);
             pullElapsed += Time.deltaTime;
             float progress = Mathf.Clamp01(pullElapsed / pullDuration);
-            float step = pullDistance * (Mathf.SmoothStep(0f, 1f, progress) -
-                Mathf.SmoothStep(0f, 1f, previous));
+            // Fast initial tug with a soft arrival. Recompute the remaining distance so
+            // a moving player still receives the enemy within the same travel time.
+            Vector3 remainingDelta = anchorEnemy.transform.position - transform.position;
+            remainingDelta.y = 0f;
+            float remainingDistance = Mathf.Max(0f, remainingDelta.magnitude - enemyStopDistance);
+            float timeRatio = (1f - progress) / Mathf.Max(0.0001f, 1f - previous);
+            float step = remainingDistance * (1f - timeRatio * timeRatio);
             float moved = anchorEnemy.Movement.GrapplePullTowards(transform.position,
                 step, enemyStopDistance);
             float height = Mathf.Min(enemyPullHopHeight, pullDistance * 0.25f);

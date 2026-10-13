@@ -1,5 +1,6 @@
 using System;
 using Core;
+using Enemies.AttackStyles;
 using Enemies.Combat.States;
 using UnityEngine;
 using Random = UnityEngine.Random;

@@ -8,7 +8,8 @@ namespace Player.Movement
     {
         None = 0,
         Move = 1,
-        Sprint = 2
+        Sprint = 2,
+        Dash = 4
     }
 
     public class MovementRestrictions
@@ -18,6 +19,7 @@ namespace Player.Movement
 
         public bool CanMove => !Contains(MovementRestriction.Move);
         public bool CanSprint => CanMove && !Contains(MovementRestriction.Sprint);
+        public bool CanDash => CanMove && !Contains(MovementRestriction.Dash);
 
         public float SpeedMultiplier
         {

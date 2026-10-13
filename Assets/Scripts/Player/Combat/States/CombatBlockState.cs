@@ -18,7 +18,7 @@ namespace Player.Combat.States
             blockTimer = 0f;
             combat.IsSheathed = false;
 
-            player.Movement.Restrictions.Add(this, MovementRestriction.Sprint);
+            player.Movement.Restrictions.Add(this, MovementRestriction.Sprint | MovementRestriction.Dash);
             player.Movement.Restrictions.SetSpeedMultiplier(this, config.BlockMoveSpeedMultiplier);
             player.AnimationManager.PlayBlockAnimation();
         }

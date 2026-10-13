@@ -38,7 +38,7 @@ namespace Enemies.States
                     return;
                 }
                 enemy.Movement.MoveTo(enemy.Perception.Target.position, Speed(enemy),
-                    enemy.AttackStyle.DesiredDistance(enemy) * 0.7f);
+                    enemy.AttackStyle.DesiredDistance(enemy));
                 return;
             }
             float engagementRange = enemy.EngagementRange;

@@ -1,100 +1,196 @@
+using System.Collections.Generic;
 using Combat;
 using Core;
+using Enemies.Combat;
+using Enemies.Core;
+using Enemies.Movement;
+using Enemies.Types.Shield;
 using UnityEngine;
+using Utilities;
 
-namespace Enemies.Combat.States
+namespace Enemies.AttackStyles.Shield
 {
-    public sealed class ShieldAttackState : IState<Core.EnemyBase>
+    public sealed class ShieldAttackState : IState<EnemyBase>
     {
+        private enum Phase { BashTelegraph, Bash, SwordTelegraph, Sword }
+
         private readonly ShieldAttackStyle style;
+        private readonly HashSet<IDamageable> hitSet = new();
+        private readonly MeleeLunge lunge = new();
+        
         private EnemyShield bearer;
-        private float elapsed;
-        private enum Phase { BashTelegraph, Bash, FirstSword, SecondSword }
         private Phase phase;
-        private bool hit;
-        private bool active;
-        private bool cueStruck;
         private Vector3 dashDestination;
+        
+        private bool active;
+        
+        private float elapsed;
+        private float telegraphDuration;
+
         public ShieldAttackState(ShieldAttackStyle style) => this.style = style;
-        public void Enter(Core.EnemyBase enemy)
+
+        public void Enter(EnemyBase enemy)
         {
             bearer = (EnemyShield)enemy;
+            active = true;
+            lunge.Reset();
+            hitSet.Clear();
+            
+            if (enemy.AnimationManager != null)
+            {
+                enemy.AnimationManager.OnAttackWindowOpened += OnAttackWindowOpened;
+            }
+            
+            enemy.IsAttackWindowOpen = false;
+            enemy.IsAnimationFinished = false;
+
             enemy.Movement.Stop();
             enemy.Locomotion.PlayLocomotionAnimation(EnemyLocomotionAnimation.Mode.None);
-            active = true; elapsed = 0f; hit = false; cueStruck = false;
-            phase = bearer.ShieldBroken ? Phase.FirstSword : Phase.BashTelegraph;
-            bearer.IsBashing = !bearer.ShieldBroken;
-            // TODO(Animation): Play bash windup, or first sword swing if the shield is broken.
-            enemy.AttackIndicator.Show(phase == Phase.BashTelegraph ? style.BashDefense : style.SwordDefense, phase == Phase.BashTelegraph ? style.TelegraphDuration : 0.12f);
-            dashDestination = enemy.transform.position + enemy.transform.forward * 2.1f;
-        }
-        public void Tick(Core.EnemyBase enemy, float dt)
-        {
-            elapsed += dt;
-            if (enemy.Perception.Target == null) { style.FinishAttack(enemy); return; }
-            // Facing is committed at telegraph start: dash and wall-run can flank it.
-            if (phase == Phase.BashTelegraph)
+            
+            
+            if (bearer.ShieldBroken)
             {
-                enemy.AttackIndicator.UpdateRemaining(style.TelegraphDuration - elapsed);
-
-                if (elapsed < style.TelegraphDuration) return;
-                phase = Phase.Bash; elapsed = 0f;
-                enemy.AttackIndicator.Strike();
-                // TODO(Animation): Play shield bash. Dash movement remains gameplay-driven.
-                enemy.Movement.BeginDash(dashDestination, style.BashSpeed);
-            }
-            else if (phase == Phase.Bash)
-            {
-                Strike(enemy, 1.35f, 1.3f, style.BashDamage, style.BashPush);
-                if (!active) return; // TakeHit can synchronously parry and change state.
-                if (elapsed < 0.28f) return;
-                enemy.Movement.EndDash(); bearer.IsBashing = false;
-                // TODO(Animation): Play first sword swing.
-                phase = Phase.FirstSword; elapsed = 0f; hit = false; cueStruck = false;
-                enemy.AttackIndicator.Show(style.SwordDefense, 0.12f);
-            }
-            else
-            {
-                enemy.AttackIndicator.UpdateRemaining(0.12f - elapsed);
-                if (elapsed >= 0.12f && !cueStruck) { enemy.AttackIndicator.Strike(); cueStruck = true; }
-
-                if (elapsed >= 0.12f && elapsed <= 0.26f)
-                    Strike(enemy, 1.15f, 1.05f, style.SwordDamage, 3f);
-                if (!active) return;
-                if (elapsed < 0.38f) return;
-                if (phase == Phase.FirstSword)
-                {
-                    // TODO(Animation): Play second sword swing.
-                    phase = Phase.SecondSword;
-                    elapsed = 0f; hit = false; cueStruck = false;
-                    enemy.AttackIndicator.Show(style.SwordDefense, 0.12f);
-                }
-                else style.FinishAttack(enemy);
-            }
-        }
-        private void Strike(Core.EnemyBase enemy, float reach, float width, float damage, float push)
-        {
-            if (hit || enemy.Perception.TargetCollider == null) return;
-            Vector3 center = enemy.transform.position + Vector3.up + enemy.transform.forward * reach * 0.6f;
-            foreach (Collider target in Physics.OverlapBox(center, new Vector3(width * 0.5f, 0.85f, reach * 0.5f), enemy.transform.rotation))
-            {
-                if (target != enemy.Perception.TargetCollider && !target.transform.IsChildOf(enemy.Perception.Target)) continue;
-                var damageable = target.GetComponentInParent<IDamageable>();
-                if (damageable == null) continue;
-                hit = true;
-                Vector3 point = HitPointUtility.OnTargetSurface(target, enemy.transform.position, out Vector3 normal);
-                damageable.TakeHit(new HitInfo { defense = phase == Phase.Bash ? style.BashDefense : style.SwordDefense, damage = damage, poiseDamage = phase == Phase.Bash ? 8f : 3f,
-                    impactMultiplier = phase == Phase.Bash ? 1.2f : 0.5f, knockbackForce = push,
-                    hitPoint = point, hitNormal = normal, hitDirection = enemy.transform.forward, attacker = enemy.gameObject });
+                BeginSwordTelegraph(enemy, style.swordAttack.telegraphDuration,
+                    style.swordAttack.telegraphAnimation);
                 return;
             }
+
+            phase = Phase.BashTelegraph;
+            elapsed = 0f;
+            telegraphDuration = style.bashAttack.telegraphDuration;
+            bearer.IsBashing = true;
+            
+            enemy.AnimationManager.PlayAnimation("BashTelegraph");
+            enemy.AttackIndicator.Show(style.bashAttack.defense, telegraphDuration);
         }
-        public void Exit(Core.EnemyBase enemy)
+
+        public void Tick(EnemyBase enemy, float dt)
         {
-            active = false; enemy.AttackIndicator.Hide(); enemy.Movement.EndDash(); enemy.Movement.Stop();
-            bearer.IsBashing = false;
-            // TODO(Animation): Cancel attack animation on interruption / completion.
+            if (enemy.Perception.Target == null) { style.FinishAttack(enemy); return; }
+            elapsed += dt;
+            if (phase != Phase.Bash) enemy.Movement.FaceTarget(enemy.Perception.Target, dt);
+
+            switch (phase)
+            {
+                case Phase.BashTelegraph:
+                    enemy.AttackIndicator.UpdateRemaining(telegraphDuration - elapsed);
+                    if (elapsed < telegraphDuration) return;
+                    phase = Phase.Bash;
+                    elapsed = 0f;
+                    enemy.AttackIndicator.Strike();
+                    enemy.AnimationManager.PlayAnimation("Bash");
+                    float bashReach = MeleeHitUtility.ForwardReach(style.bashHitCollider, enemy.transform);
+                    var targetCollider = enemy.Perception.TargetCollider;
+                    if (targetCollider != null)
+                        bashReach += Mathf.Max(targetCollider.bounds.extents.x, targetCollider.bounds.extents.z);
+                    float dashDistance = Mathf.Min(style.bashDashDistance,
+                        Mathf.Max(0f, enemy.HorizontalDistance - bashReach * style.bashStandRatio));
+                    dashDestination = enemy.transform.position + enemy.transform.forward * dashDistance;
+                    if (dashDistance > 0f)
+                        enemy.Movement.BeginDash(dashDestination, style.bashSpeed);
+                    break;
+
+                case Phase.Bash:
+                    BashHit(enemy);
+                    if (!active || elapsed < style.bashDuration) return;
+                    
+                    enemy.Movement.EndDash();
+                    bearer.IsBashing = false;
+                    hitSet.Clear();
+                    BeginSwordTelegraph(enemy, style.swordAttack.telegraphDuration, style.swordAttack.telegraphAnimation);
+                    break;
+
+                case Phase.SwordTelegraph:
+                    enemy.AttackIndicator.UpdateRemaining(telegraphDuration - elapsed);
+                    if (elapsed < telegraphDuration) return;
+                    
+                    StartSword(enemy);
+                    break;
+
+                case Phase.Sword:
+                    lunge.Tick(enemy, dt, style.lungeSpeed, style.AttackRange(enemy) * style.standRatio);
+                    if (enemy.IsAttackWindowOpen)
+                        SwordHit(enemy);
+
+                    if (!active) return;
+                    
+                    if (enemy.IsAnimationFinished || elapsed >= style.animationTimeout)
+                        style.FinishAttack(enemy);
+                    break;
+            }
+        }
+
+        public void Exit(EnemyBase enemy)
+        {
+            active = false;
+            lunge.Reset();
+            if (enemy.AnimationManager != null)
+            {
+                enemy.AnimationManager.OnAttackWindowOpened -= OnAttackWindowOpened;
+            }
+            
+            enemy.AttackIndicator.Hide();
+            enemy.Movement.EndDash();
+            enemy.Movement.Stop();
+            
             enemy.IsAttackWindowOpen = false;
+            enemy.IsAnimationFinished = false;
+            
+            bearer.IsBashing = false;
+            hitSet.Clear();
+        }
+
+        private void OnAttackWindowOpened()
+        {
+            if (!active || phase != Phase.Sword || !bearer.IsAttackWindowOpen) return;
+            hitSet.Clear();
+            lunge.Reset();
+            bearer.Movement.Stop();
+
+            bool outside = !MeleeHitUtility.IsOverlapping(style.hitCollider, bearer.Perception.TargetCollider);
+            lunge.Begin(bearer, style.hitCollider, style.swordLungeDistance, style.lungeMaxTime, outside);
+        }
+
+        private void BeginSwordTelegraph(EnemyBase enemy, float duration, string telegraphAnim)
+        {
+            phase = Phase.SwordTelegraph;
+            elapsed = 0f;
+            telegraphDuration = duration;
+            enemy.AttackIndicator.Show(style.swordAttack.defense, duration);
+            if (!string.IsNullOrEmpty(telegraphAnim))
+                enemy.AnimationManager.PlayAnimation(telegraphAnim);
+        }
+
+        private void StartSword(EnemyBase enemy)
+        {
+            phase = Phase.Sword;
+            elapsed = 0f;
+            enemy.IsAttackWindowOpen = false;
+            enemy.IsAnimationFinished = false;
+            enemy.AttackIndicator.Strike();
+            enemy.AnimationManager.PlayAnimation(style.swordAttack.animationName, style.swordAttack.crossFadeDuration);
+        }
+
+        private void SwordHit(EnemyBase enemy)
+        {
+            var attack = style.swordAttack;
+            MeleeHitUtility.Hit(style.hitCollider, style.hittableLayers, attack.ToHitInfo(),
+                enemy.gameObject, hitSet, info =>
+                {
+                    MeleeHitUtility.SpawnVfx(attack.hitVfxPrefab, info);
+                    return active;
+                });
+        }
+
+        private void BashHit(EnemyBase enemy)
+        {
+            var attack = style.bashAttack;
+            MeleeHitUtility.Hit(style.bashHitCollider, style.hittableLayers, attack.ToHitInfo(),
+                enemy.gameObject, hitSet, info =>
+                {
+                    MeleeHitUtility.SpawnVfx(attack.hitVfxPrefab, info);
+                    return active;
+                });
         }
     }
 }

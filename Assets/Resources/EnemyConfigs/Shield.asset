@@ -27,7 +27,7 @@ MonoBehaviour:
   retreatDistance: 2
   retreatDuration: 0.45
   canBeGrapplePulled: 1
-  maxHealth: 120
+  maxHealth: 300
   parryStunDuration: 2.5
   stunnedDamageMultiplier: 2
   parryKnockbackForce: 7

@@ -1,8 +1,11 @@
 using Combat;
 using Combat.AttackIndicators;
 using Core;
+using Enemies.Animation;
+using Enemies.AttackStyles;
 using Enemies.Combat;
 using Enemies.Feedback;
+using Enemies.HUD;
 using UnityEngine;
 
 namespace Enemies.Core
@@ -17,6 +20,8 @@ namespace Enemies.Core
         [SerializeField] private EnemyAnimationManager animationManager;
         [SerializeField] private bool showPatrolGizmos = true;
 
+        public Transform lockPoint;
+        
         private StateMachine<EnemyBase> stateMachine;
         private Collider bodyCollider;
         private bool isDead;
@@ -29,6 +34,7 @@ namespace Enemies.Core
         public EnemyAttackIndicator AttackIndicator { get; private set; }
         public EnemyPerception Perception { get; private set; }
         public EnemyFeedback Feedback { get; private set; }
+        public EnemyHealthBar HealthBar { get; private set; }
         public EnemyCombatStates States { get; private set; }
         public IState<EnemyBase> CurrentState => stateMachine?.CurrentState;
         public bool IsAlive => stateMachine != null && !isDead;
@@ -57,14 +63,16 @@ namespace Enemies.Core
             AttackIndicator = GetComponent<EnemyAttackIndicator>();
             bodyCollider = GetComponent<Collider>();
             AttackStyle = GetComponent<EnemyAttackStyle>();
+            animationManager = GetComponentInChildren<EnemyAnimationManager>(true);
             
-            if (animationManager == null)
-                animationManager = GetComponentInChildren<EnemyAnimationManager>(true);
+            HealthBar = GetComponentInChildren<EnemyHealthBar>();
             
             Perception = new EnemyPerception(transform, player, config);
             Feedback = new EnemyFeedback(gameObject);
             
             CurrentHealth = config.maxHealth;
+            HealthBar.SetValue(CurrentHealth);
+            
             PatrolPoints = new Vector3[config.patrolOffsets?.Length ?? 0];
             for (int i = 0; i < PatrolPoints.Length; i++)
                 PatrolPoints[i] = transform.TransformPoint(config.patrolOffsets[i]);
@@ -122,8 +130,11 @@ namespace Enemies.Core
             if (TryBlockHit(hit)) return;
             if (CurrentState == States.Stun)
                 hit.damage *= Mathf.Max(1f, config.stunnedDamageMultiplier);
+            
             CurrentHit = hit;
             CurrentHealth -= hit.damage;
+            HealthBar.SetValue(CurrentHealth);
+            
             Feedback.PlayHit(hit);
             if (CurrentHealth <= 0f)
             {
@@ -151,7 +162,6 @@ namespace Enemies.Core
             if (away.sqrMagnitude < 0.001f) away = -transform.forward;
             Feedback.PlayReaction(new HitInfo { damage = 10f, hitDirection = away.normalized, impactMultiplier = 1f });
             Movement.ApplyKnockback(away, config.parryKnockbackForce, Perception.Target);
-            
         }
 
         private void OpenAttackWindow() => IsAttackWindowOpen = IsAlive && !IsGrappleLocked && CurrentState == States.Attack;

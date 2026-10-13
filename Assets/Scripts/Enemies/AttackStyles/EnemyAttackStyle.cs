@@ -1,8 +1,9 @@
 using Core;
+using Enemies.Core;
 using Player.Combat;
 using UnityEngine;
 
-namespace Enemies.Combat
+namespace Enemies.AttackStyles
 {
     [DisallowMultipleComponent]
     public abstract class EnemyAttackStyle : MonoBehaviour
@@ -15,10 +16,9 @@ namespace Enemies.Combat
         private float nextAttackTime;
 
         public AttackData AttackData => attackData;
-
-        public virtual bool Supports(Core.EnemyBase enemy) => true;
-        public abstract IState<Core.EnemyBase> CreateState();
-        public virtual IState<Core.EnemyBase> CreateEscapeState() => null;
+        
+        public abstract IState<EnemyBase> CreateState();
+        public virtual IState<EnemyBase> CreateEscapeState() => null;
         public abstract float DesiredDistance(Core.EnemyBase ctx);
         public virtual float EngagementRange(Core.EnemyBase ctx) => ctx.Config.stalkRange;
         public virtual bool MoveWhileStalking(Core.EnemyBase ctx, float dt) => false;

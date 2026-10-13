@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace Enemies.Combat
+namespace Enemies.Animation
 {
     public class EnemyAnimationManager : MonoBehaviour
     {
